@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createDb, type Db } from './client.js';
 import * as t from './schema.js';
 import { eq, and } from 'drizzle-orm';
+import { pathToFileURL } from 'node:url';
 import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
@@ -223,8 +224,10 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
   return { workspaceId, userId };
 }
 
-// CLI entrypoint
-if (import.meta.url === `file://${process.argv[1]}`) {
+// CLI entrypoint. See the note in migrate.ts — a `file://${argv[1]}` template
+// never matches import.meta.url on Windows, so this block silently never ran.
+const entry = process.argv[1];
+if (entry && import.meta.url === pathToFileURL(entry).href) {
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error('DATABASE_URL is required');

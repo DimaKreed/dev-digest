@@ -2,6 +2,7 @@
   "name": "@devdigest/api",
   "version": "0.0.0",
   "private": true,
+  "packageManager": "pnpm@10.34.5",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -15,7 +16,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.33.1",
-    "@ast-grep/napi": "0.43.0",
+    "@ast-grep/napi": "0.45.0",
     "@fastify/autoload": "^6.0.3",
     "@fastify/cors": "^10.0.2",
     "@fastify/helmet": "^13.0.2",
