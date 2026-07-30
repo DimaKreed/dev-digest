@@ -3,11 +3,20 @@
 Cross-module findings only: package wiring, shared contracts, CI, tooling, local setup.
 Anything scoped to one package belongs in that package's `insights.md`.
 
-Append **newest first**, one finding per entry. Include the symptom that led you to it —
-the symptom is what makes it findable next time.
+Fixed sections below — append inside the matching one, never overwrite. Each entry: the claim,
+the symptom that led to it, and a concrete anchor (`file:line`, a command, or an error string).
+Maintained by the [engineering-insights](.claude/skills/engineering-insights/SKILL.md) skill.
 
-<!-- Template:
-## <what you learned, as a claim>
-**Symptom:** what you saw first.
-**Cause / rule:** why, and what to do instead.
--->
+## What Works
+
+## What Doesn't Work
+
+## Codebase Patterns
+
+## Tool & Library Notes
+
+## Recurring Errors & Fixes
+
+## Session Notes
+
+## Open Questions

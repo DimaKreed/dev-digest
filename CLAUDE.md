@@ -14,6 +14,17 @@ Install, test and build run **per directory**.
 
 Mixing up pnpm/npm per directory is the most common mistake here.
 
+## Session protocol
+
+**Before working inside a module**, read that module's `insights.md` — plus the root one when
+the task crosses packages — and state the top 3 findings that bear on the task. Treat them as
+high-confidence guidance unless the code contradicts them. Empty sections are a valid answer;
+say so rather than skipping the step.
+
+**At the end of a task**, run `/engineering-insights` to append what was learned. Append inside
+the existing sections, never overwrite. Nothing durable learned ⇒ write nothing and say so —
+an invented entry is worse than an empty file.
+
 ## Commands
 
 `./scripts/dev.sh` — zero → docker + migrate + seed + server + client (`--db-only`,
@@ -53,5 +64,7 @@ memory, skills, compose) are **intentional scaffolding, not dead code**. Never c
 - [README.md](README.md) — architecture diagrams, feature tour, lesson roadmap
 - [TESTING.md](TESTING.md) — suite map, CI lanes, the hard testing conventions
 - [docs/agent-prompts/README.md](docs/agent-prompts/README.md) — how reviewer system prompts are built
-- [insights.md](insights.md) — **cross-module** findings; append what you learn about
-  wiring, CI or tooling. Module-specific findings go in that module's `insights.md`.
+- [insights.md](insights.md) — **cross-module** findings (wiring, CI, tooling) in fixed
+  sections. Module-specific findings go in that module's `insights.md`.
+- [.claude/skills/engineering-insights/SKILL.md](.claude/skills/engineering-insights/SKILL.md)
+  — routing, quality bar and entry format for the files above

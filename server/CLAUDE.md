@@ -73,5 +73,5 @@ even if `package.json` drifts locally.
 - [../docs/agent-prompts/README.md](../docs/agent-prompts/README.md) — reviewer prompt authoring
 - [docs/](docs/) — design decisions, flows, ADRs
 - [specs/](specs/) — intended behavior, written before implementation
-- [insights.md](insights.md) — hard-won findings; **append here** when a task teaches
-  you something durable and non-obvious
+- [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
+  edit here**, append at the end of a task via `/engineering-insights`

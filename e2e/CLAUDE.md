@@ -52,5 +52,5 @@ Hermetic mode uses ports 5433 (pg) / 3101 (api) / 3100 (web) and its own contain
 - [../TESTING.md](../TESTING.md) — where this suite sits in the overall strategy
 - [docs/](docs/) — design decisions, flows, ADRs
 - [specs/](specs/) — **note:** this dir holds the flow specs themselves, not prose
-- [insights.md](insights.md) — hard-won findings; **append here** when a task teaches
-  you something durable and non-obvious
+- [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
+  edit here**, append at the end of a task via `/engineering-insights`
