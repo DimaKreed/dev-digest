@@ -1,0 +1,15 @@
+{
+  "name": "PR list FINDINGS chips open the PR pre-filtered to that severity",
+  "description": "From the PR list, click the CRITICAL chip in PR #482's FINDINGS column and confirm it lands on the PR detail page with both ?tab=findings and ?severity=critical already applied, showing the seeded CRITICAL finding. This is the cross-page contract: the list rolls up the latest review of each agent (server side, GET /repos/:id/pulls) and the detail page recomputes the same tally client-side, so a mismatch in either formula shows up here. The chip is a button nested inside the row, which navigates on its own click — this flow also guards the stopPropagation that keeps the row handler from overwriting the filtered URL. Read-only seeded data (no model call). Assumes a freshly-seeded DB where acme/payments-api (PR #482) is the first repo — run locally via the hermetic stack (see e2e/README.md).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "the list rollup settles" },
+    { "cmd": ["wait", "--text", "Findings"], "label": "the FINDINGS column header renders" },
+    { "cmd": ["find", "role", "button", "click", "--name", "CRITICAL"], "label": "click the CRITICAL chip on the seeded PR row" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "the chip navigated to the PR detail route" },
+    { "cmd": ["wait", "--url", "tab=findings"], "label": "the Agent runs tab is selected" },
+    { "cmd": ["wait", "--url", "severity=critical"], "label": "the severity filter carried across pages" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the seeded CRITICAL finding is shown" }
+  ]
+}

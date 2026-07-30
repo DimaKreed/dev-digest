@@ -2,7 +2,7 @@
    - Findings panel (VerdictBanner + FindingCards)
    - RunReviewDropdown (run all / a specific agent) + live SSE RunStatus
    - Basic file-by-file diff viewer in the Files tab
-   Tab state lives in query (?tab). */
+   Tab state lives in query (?tab), the severity filter in ?severity. */
 "use client";
 
 import React from "react";
@@ -21,7 +21,8 @@ import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } 
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
 import { githubPrUrl } from "../../../../../lib/github-urls";
-import type { FindingRecord } from "@devdigest/shared";
+import { parseSeverity, latestRunPerAgent, countBySeverity, runMatches } from "@/lib/severity";
+import type { FindingRecord, Severity } from "@devdigest/shared";
 
 export default function PRDetailPage() {
   const params = useParams<{ repoId: string; number: string }>();
@@ -59,22 +60,36 @@ export default function PRDetailPage() {
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
-  const setParam = (key: string, val: string | null) => {
+  // Patch several params in one replace: selecting a severity from another tab
+  // has to set ?tab and ?severity together, or the first write is lost.
+  const setParams = (patch: Record<string, string | null>) => {
     const sp = new URLSearchParams(search.toString());
-    if (val == null) sp.delete(key);
-    else sp.set(key, val);
+    for (const [key, val] of Object.entries(patch)) {
+      if (val == null) sp.delete(key);
+      else sp.set(key, val);
+    }
     router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`);
   };
+  const setParam = (key: string, val: string | null) => setParams({ [key]: val });
   const setTab = (t: string) => setParam("tab", t);
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
-  const runs = reviews ?? [];
-  const allFindings: FindingRecord[] = React.useMemo(
-    () => runs.flatMap((r) => r.findings),
-    [reviews],
-  );
+  // Memoized so the derivations below have a stable dependency.
+  const runs = React.useMemo(() => reviews ?? [], [reviews]);
+  const allFindings: FindingRecord[] = React.useMemo(() => runs.flatMap((r) => r.findings), [runs]);
   const lethalTrifecta = allFindings.filter((f) => f.kind === "lethal_trifecta");
   const findingsCount = allFindings.length;
+
+  // Severity filter. The counters summarize the PR's CURRENT state, so they
+  // read only the newest run of each agent — re-runs would double-count. To
+  // keep "3 CRITICAL" equal to what clicking it reveals, an active filter also
+  // drops the superseded runs from the list below.
+  const severity = parseSeverity(search.get("severity"));
+  const latestRuns = React.useMemo(() => latestRunPerAgent(runs), [runs]);
+  const severityCounts = React.useMemo(() => countBySeverity(latestRuns), [latestRuns]);
+  const visibleRuns = severity ? latestRuns.filter((r) => runMatches(r, severity)) : runs;
+  const setSeverity = (next: Severity | null) =>
+    setParams({ severity: next ? next.toLowerCase() : null, tab: "findings" });
 
   const repoName = activeRepo?.full_name ?? repoId;
   // The real "owner/repo" (null until the repo is loaded) — used to build
@@ -127,7 +142,10 @@ export default function PRDetailPage() {
         prId={prId}
         tab={tab}
         findingsCount={findingsCount}
+        severityCounts={severityCounts}
+        severity={severity}
         githubUrl={repoFullName ? githubPrUrl(repoFullName, pr.number) : null}
+        onSetSeverity={setSeverity}
         onSetTab={setTab}
         onRunStart={() => setTab("findings")}
         onRunsStarted={() => invalidateActiveRuns()}
@@ -142,7 +160,8 @@ export default function PRDetailPage() {
             liveRunIds={liveRunIds}
             reviewRunning={reviewRunning}
             lethalTrifecta={lethalTrifecta}
-            runs={runs}
+            runs={visibleRuns}
+            severity={severity}
             prRuns={prRuns}
             prCommits={pr.commits}
             repoFullName={repoFullName}

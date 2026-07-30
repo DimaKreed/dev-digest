@@ -40,6 +40,27 @@ export const s = {
   } satisfies CSSProperties,
   sizeBadgeBorder: (color: string): CSSProperties => ({ border: `1px solid ${color}` }),
   scoreCell: { display: "flex", alignItems: "center" } satisfies CSSProperties,
+  findingsCell: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  /** One severity chip. Zero-count levels stay in place but read as absent, so
+   *  the column stays aligned row to row (same call as the PR header's bar). */
+  findingChip: (color: string, empty: boolean): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    padding: 0,
+    border: "none",
+    background: "none",
+    font: "inherit",
+    color,
+    opacity: empty ? 0.4 : 1,
+    cursor: empty ? "default" : "pointer",
+  }),
   costCell: {
     fontSize: 12,
     color: "var(--text-secondary)",

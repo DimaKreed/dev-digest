@@ -100,3 +100,5 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `05-pr-diff` | PR #482 → Files changed tab → seeded file renders in the diff viewer |
 | `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
+| `08-pr-severity-filter` | PR #482 → Agent runs tab → severity counter chips drive `?severity` and narrow the findings |
+| `09-pr-list-findings` | PR list → FINDINGS chip on PR #482 → detail page opens pre-filtered to that severity |

@@ -1,4 +1,5 @@
 import type { PrMeta } from "../../../../lib/types";
+import { SEVERITY_LEVELS } from "@/lib/severity";
 
 /** Constants for the PR list page (/repos/:repoId/pulls). */
 
@@ -24,7 +25,17 @@ export const SIZE_COLOR: Record<string, string> = {
 };
 
 /** Grid template for both the header row and PR rows. */
-export const GRID = "1fr 132px 92px 60px 118px 84px 78px";
+export const GRID = "1fr 132px 92px 60px 150px 118px 84px 78px";
+
+/** PrMeta severity-count field per severity bucket (for the FINDINGS column),
+ *  in the shared severity order. */
+export const FINDINGS_FIELDS = SEVERITY_LEVELS.map((sev) => ({
+  sev,
+  field: `findings_${sev.toLowerCase()}` as
+    | "findings_critical"
+    | "findings_warning"
+    | "findings_suggestion",
+}));
 
 /** Line-count thresholds for the S/M/L size bucket. */
 export const SIZE_SMALL_MAX = 100;
@@ -44,6 +55,7 @@ export const COLUMN_KEYS: string[] = [
   "author",
   "size",
   "score",
+  "findings",
   "status",
   "cost",
   "updated",

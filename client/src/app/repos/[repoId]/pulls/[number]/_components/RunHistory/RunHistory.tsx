@@ -2,9 +2,10 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import { Badge, Icon, CircularScore, HoverCard, type IconName } from "@devdigest/ui";
+import type { RunSummary, PrCommit, FindingRecord } from "@devdigest/shared";
 import { RunCostBadge } from "@/components/RunCostBadge";
+import { FindingsHoverList } from "@/components/FindingsHoverList";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -88,12 +89,20 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  findingsByRunId,
+  repoFullName,
+  headSha,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** Findings of each run, joined in by run_id — the timeline row carries only
+   *  denormalized counts, so this is what the hover peek renders. */
+  findingsByRunId?: Map<string, FindingRecord[]>;
+  repoFullName?: string | null;
+  headSha?: string | null;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -150,8 +159,15 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
+        const runFindings = findingsByRunId?.get(r.run_id) ?? [];
         return (
-          <div key={`run:${r.run_id}`} style={rowStyle}>
+          <HoverCard
+            key={`run:${r.run_id}`}
+            block
+            // Nothing to peek at on a failed, cancelled or clean run.
+            disabled={runFindings.length === 0}
+            trigger={
+          <div style={rowStyle}>
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
               {t(`runStatus.${o.key}`)}
             </Badge>
@@ -230,6 +246,17 @@ export function RunHistory({
               </span>
             )}
           </div>
+            }
+          >
+            {() => (
+              <FindingsHoverList
+                findings={runFindings}
+                headingKey="inThisRun"
+                repoFullName={repoFullName}
+                headSha={headSha}
+              />
+            )}
+          </HoverCard>
         );
       })}
     </div>

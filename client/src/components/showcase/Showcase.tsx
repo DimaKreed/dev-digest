@@ -29,6 +29,7 @@ import {
   Modal,
   Tabs,
   Dropdown,
+  HoverCard,
   FormField,
   TextInput,
   SelectInput,
@@ -106,6 +107,9 @@ export function Gallery() {
         </Chip>
         <Chip icon="Plus" count={4}>
           Add
+        </Chip>
+        <Chip icon="Lightbulb" count={0} disabled>
+          Empty
         </Chip>
         <Avatar name="Ada Lovelace" />
         <Avatar name="you" size={28} />
@@ -190,6 +194,11 @@ export function Gallery() {
             { divider: true },
             { label: "Configure…", icon: "Settings", muted: true },
           ]}
+        />
+        <HoverCard
+          width={260}
+          trigger={<Button kind="secondary">Hover me</Button>}
+          children={<span style={{ fontSize: 13 }}>Peek panel — opens on hover or focus.</span>}
         />
         <Button kind="ghost" onClick={() => setDrawer(true)}>
           Open Drawer

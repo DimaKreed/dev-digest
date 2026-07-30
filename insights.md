@@ -44,6 +44,23 @@ else the injected price-book estimate) and `run-executor.ts` simply destructured
 generous; the gap is usually only persistence + contract + UI, with no reviewer-core change at all.
 _2026-07-30_
 
+### The per-severity findings tally is computed TWICE, in two languages, with no shared code — change one, change the other
+**Symptom:** the PR list's FINDINGS column and the PR detail header's counter chips show the same
+three numbers, and the list chips link straight to the detail page filtered by the level clicked —
+so any drift reads as a bug ("it said 2 WARNING, the page shows 3"). But one is a Drizzle rollup in
+`server/src/modules/pulls/routes.ts` (`GET /repos/:id/pulls`) and the other is
+`latestRunPerAgent` + `countBySeverity` in **`client/src/lib/severity.ts`** (they started in the
+detail route's `SeverityFilterBar/helpers.ts` and moved once the PR list needed them too).
+There is no shared helper and there cannot be: `rollupSeverities`
+(`server/src/modules/pulls/status.ts:23`) is server-only, and the list endpoint ships counts while
+the detail page ships whole `ReviewRecord[]`.
+**Rule:** the formula is *newest review per `agent_id` (null agent ⇒ its own bucket), dismissed
+findings excluded*. Touching either side means porting the change to the other. The one guard that
+fails loudly is the PR-list assertion in `server/test/reviews.it.test.ts` (next to the `cost_usd`
+one) — it is the only place the two definitions are checked against real data. Note the SCORE
+column deliberately keeps a different notion of "latest" (single newest review per PR).
+_2026-07-30_
+
 ## Tool & Library Notes
 
 ## Recurring Errors & Fixes

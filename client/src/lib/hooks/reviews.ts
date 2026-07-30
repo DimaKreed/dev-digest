@@ -48,11 +48,14 @@ export function usePrRuns(prId: string | null | undefined) {
 }
 
 // ---- Persisted reviews + findings for a PR ----
-export function usePrReviews(prId: string | null | undefined) {
+/** `enabled` lets a caller defer the fetch (the PR list only wants findings once
+ *  a peek panel opens). The query key is unchanged either way, so a list-page
+ *  fetch warms the same cache entry the detail page reads. */
+export function usePrReviews(prId: string | null | undefined, enabled = true) {
   return useQuery({
     queryKey: ["reviews", prId],
     queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
-    enabled: !!prId,
+    enabled: !!prId && enabled,
   });
 }
 

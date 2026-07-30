@@ -3,16 +3,22 @@
 import React, { useCallback } from "react";
 import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
 import { RunReviewDropdown } from "../RunReviewDropdown";
+import { SeverityFilterBar } from "../SeverityFilterBar";
+import type { SeverityCounts } from "@/lib/severity";
 import { s } from "./styles";
 import type { PrDetail } from "@/lib/types";
+import type { Severity } from "@devdigest/shared";
 
 interface PrDetailHeaderProps {
   pr: PrDetail;
   prId: string | null;
   tab: string;
   findingsCount: number;
+  severityCounts: SeverityCounts;
+  severity: Severity | null;
   /** github.com PR URL; null when the repo's full_name isn't known yet. */
   githubUrl?: string | null;
+  onSetSeverity: (severity: Severity | null) => void;
   onSetTab: (tab: string) => void;
   onRunStart: () => void;
   onRunsStarted: () => void;
@@ -23,7 +29,10 @@ export function PrDetailHeader({
   prId,
   tab,
   findingsCount,
+  severityCounts,
+  severity,
   githubUrl,
+  onSetSeverity,
   onSetTab,
   onRunStart,
   onRunsStarted,
@@ -108,6 +117,7 @@ export function PrDetailHeader({
           </span>
         </div>
       )}
+      <SeverityFilterBar counts={severityCounts} active={severity} onSelect={onSetSeverity} />
       <Tabs
         value={tab}
         onChange={onSetTab}

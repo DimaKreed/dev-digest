@@ -7,7 +7,7 @@
 
 import React from "react";
 import { Icon, Badge } from "@devdigest/ui";
-import type { ReviewRecord, Verdict } from "@devdigest/shared";
+import type { ReviewRecord, Severity, Verdict } from "@devdigest/shared";
 import { RunCostBadge } from "@/components/RunCostBadge";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
@@ -30,6 +30,7 @@ export function ReviewRunAccordion({
   defaultOpen = false,
   repoFullName,
   headSha,
+  severity = null,
   costUsd = null,
   targetRunId = null,
   targetNonce = 0,
@@ -39,6 +40,9 @@ export function ReviewRunAccordion({
   defaultOpen?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Active severity filter — narrows the body's finding list. The header
+   *  counts stay unfiltered: they describe the run, not the current view. */
+  severity?: Severity | null;
   /** Cost of the agent run behind this review, joined in by the parent from the
    *  run timeline (`ReviewRecord` itself carries no usage). Null ⇒ render nothing;
    *  a lone dash between the score and the date is noise, not information. */
@@ -163,6 +167,7 @@ export function ReviewRunAccordion({
             prId={prId}
             repoFullName={repoFullName}
             headSha={headSha}
+            severity={severity}
           />
         </div>
       )}

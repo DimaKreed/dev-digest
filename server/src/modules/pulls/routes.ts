@@ -7,7 +7,7 @@ import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
-import { deriveReviewStatus } from './status.js';
+import { deriveReviewStatus, rollupSeverities, type SeverityCounts } from './status.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -111,21 +111,65 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest-review SCORE per PR for the list's score ring. Computed on read
-    // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // Latest-review rollups per PR for the list's SCORE ring and FINDINGS
+    // breakdown. Computed on read from reviews/findings (no FK denorm); the
+    // list is small, so two IN-queries + JS grouping is cheap.
+    //
+    // The two rollups read "latest" differently, on purpose:
+    //   score    — the single newest review on the PR.
+    //   findings — the newest review of EACH agent, summed, dismissed excluded.
+    // The findings breakdown links through to the PR detail page's severity
+    // counters, so it has to use that page's formula (latestRunPerAgent +
+    // countBySeverity in the client) or the number the user clicks won't match
+    // the number they land on.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null }>();
+    const latestReviewIdsByPr = new Map<string, string[]>();
+    const sevByPr = new Map<string, SeverityCounts>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
-        .select({ prId: t.reviews.prId, score: t.reviews.score })
+        .select({
+          id: t.reviews.id,
+          prId: t.reviews.prId,
+          agentId: t.reviews.agentId,
+          score: t.reviews.score,
+        })
         .from(t.reviews)
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt));
-      // Rows are newest-first → first seen per PR is the latest review.
+      // Rows are newest-first → first seen per key is the latest review.
+      const seenAgents = new Set<string>();
       for (const rv of reviewRows) {
         if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
+        // agent_id is nullable and has no FK — an ad-hoc review is its own agent.
+        const agentKey = `${rv.prId}:${rv.agentId ?? `review:${rv.id}`}`;
+        if (seenAgents.has(agentKey)) continue;
+        seenAgents.add(agentKey);
+        const forPr = latestReviewIdsByPr.get(rv.prId);
+        if (forPr) forPr.push(rv.id);
+        else latestReviewIdsByPr.set(rv.prId, [rv.id]);
+      }
+
+      const latestIds = [...latestReviewIdsByPr.values()].flat();
+      if (latestIds.length > 0) {
+        const findingRows = await container.db
+          .select({
+            reviewId: t.findings.reviewId,
+            severity: t.findings.severity,
+            dismissedAt: t.findings.dismissedAt,
+          })
+          .from(t.findings)
+          .where(inArray(t.findings.reviewId, latestIds));
+        // Dismissed findings don't count — same rule as the detail page's
+        // counters and the blocker count on a review-run header.
+        const live = findingRows.filter((f) => f.dismissedAt == null);
+        for (const [prId, reviewIds] of latestReviewIdsByPr) {
+          const ids = new Set(reviewIds);
+          sevByPr.set(
+            prId,
+            rollupSeverities(live.filter((f) => ids.has(f.reviewId))),
+          );
+        }
       }
     }
 
@@ -148,6 +192,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
+      const sev = sevByPr.get(r.id);
       return {
         id: r.id,
         number: r.number,
@@ -169,6 +214,10 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        // null (not 0) until the PR has been reviewed — the row shows "—".
+        findings_critical: review ? (sev?.critical ?? 0) : null,
+        findings_warning: review ? (sev?.warning ?? 0) : null,
+        findings_suggestion: review ? (sev?.suggestion ?? 0) : null,
         cost_usd: latestCostByPr.get(r.id) ?? null,
       };
     });

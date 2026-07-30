@@ -6,21 +6,10 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import {
-  Icon,
-  SeverityBadge,
-  CategoryTag,
-  MonoLink,
-  ConfidenceNum,
-  Button,
-  Markdown,
-  type Severity,
-  type Category,
-} from "@devdigest/ui";
+import { Icon, Button, Markdown } from "@devdigest/ui";
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
+import { FindingSummaryRow } from "@/components/FindingSummaryRow";
 import { SEV_COLOR, SEV_COLOR_FALLBACK } from "./constants";
-import { lineLabel } from "./helpers";
-import { githubBlobUrl } from "../../../../../../../lib/github-urls";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -43,10 +32,6 @@ export function FindingCard({
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
   const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
-  const fileHref =
-    repoFullName && headSha
-      ? githubBlobUrl(repoFullName, headSha, f.file, f.start_line, f.end_line)
-      : undefined;
   const accepted = !!f.accepted_at;
   const dismissed = !!f.dismissed_at;
   const muted = accepted || dismissed;
@@ -54,23 +39,7 @@ export function FindingCard({
   return (
     <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
       <div onClick={() => setExpanded((e) => !e)} style={s.header}>
-        <div style={s.badgeWrap}>
-          <SeverityBadge severity={f.severity as Severity} compact />
-        </div>
-        <div style={s.headerMain}>
-          <div style={s.titleRow}>
-            <span style={s.title(muted, dismissed)}>{f.title}</span>
-            <CategoryTag category={f.category as Category} />
-            {accepted && <span style={s.acceptedTag}>{t("finding.accepted")}</span>}
-            {dismissed && <span style={s.dismissedTag}>{t("finding.dismissed")}</span>}
-          </div>
-          <div style={s.metaRow}>
-            <MonoLink href={fileHref}>
-              {f.file}:{lineLabel(f)}
-            </MonoLink>
-            <ConfidenceNum value={f.confidence} />
-          </div>
-        </div>
+        <FindingSummaryRow f={f} repoFullName={repoFullName} headSha={headSha} />
         <Icon.ChevronDown size={16} style={s.chevron(expanded)} />
       </div>
 

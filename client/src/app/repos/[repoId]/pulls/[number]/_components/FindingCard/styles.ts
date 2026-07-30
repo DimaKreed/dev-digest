@@ -24,32 +24,8 @@ export const s = {
     padding: "14px 16px",
     cursor: "pointer",
   } satisfies CSSProperties,
-  badgeWrap: { paddingTop: 1 } satisfies CSSProperties,
-  headerMain: { flex: 1, minWidth: 0 } satisfies CSSProperties,
-  titleRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  } satisfies CSSProperties,
-  title: (muted: boolean, dismissed: boolean): CSSProperties => ({
-    fontSize: 14,
-    fontWeight: 600,
-    color: muted ? "var(--text-muted)" : "var(--text-primary)",
-    textDecoration: dismissed ? "line-through" : "none",
-  }),
-  acceptedTag: { fontSize: 12, fontWeight: 600, color: "var(--ok)" } satisfies CSSProperties,
-  dismissedTag: {
-    fontSize: 12,
-    fontWeight: 600,
-    color: "var(--text-muted)",
-  } satisfies CSSProperties,
-  metaRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 5,
-  } satisfies CSSProperties,
+  // The header's identity row (badge/title/category/file:line/confidence) now
+  // lives in @/components/FindingSummaryRow, shared with the hover panel.
   chevron: (expanded: boolean): CSSProperties => ({
     color: "var(--text-muted)",
     transform: expanded ? "rotate(180deg)" : "none",

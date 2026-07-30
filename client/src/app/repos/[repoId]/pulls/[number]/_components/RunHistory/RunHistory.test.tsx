@@ -4,14 +4,17 @@
  * a settled run is colored/labelled by its denormalized blocker/finding counts,
  * and shows the review score ring.
  */
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { RunSummary } from "@devdigest/shared";
+import type { RunSummary, FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 import { RunHistory } from "./RunHistory";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function run(o: Partial<RunSummary>): RunSummary {
   return {
@@ -35,10 +38,10 @@ function run(o: Partial<RunSummary>): RunSummary {
   };
 }
 
-function renderRuns(runs: RunSummary[]) {
+function renderRuns(runs: RunSummary[], findingsByRunId?: Map<string, FindingRecord[]>) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <RunHistory runs={runs} onOpenTrace={() => {}} />
+      <RunHistory runs={runs} findingsByRunId={findingsByRunId} onOpenTrace={() => {}} />
     </NextIntlClientProvider>,
   );
 }
@@ -96,5 +99,51 @@ describe("RunHistory — run cost badge", () => {
   it("a failed run shows no price at all", () => {
     renderRuns([run({ status: "failed", error: "boom", cost_usd: null, score: null, blockers: null })]);
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — findings peek", () => {
+  const FINDING: FindingRecord = {
+    id: "f1",
+    severity: "WARNING",
+    category: "perf",
+    title: "N+1 query in user list endpoint",
+    file: "src/api/users.ts",
+    start_line: 45,
+    end_line: 52,
+    rationale: "One query per user.",
+    suggestion: null,
+    confidence: 0.86,
+    kind: "finding",
+    trifecta_components: null,
+    evidence: null,
+    review_id: "rv1",
+    accepted_at: null,
+    dismissed_at: null,
+  };
+
+  function hoverRow(label: string) {
+    fireEvent.mouseEnter(screen.getByText(label));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+  }
+
+  it("hovering a run card lists that run's findings", () => {
+    vi.useFakeTimers();
+    renderRuns(
+      [run({ status: "done", findings_count: 1, blockers: 0, score: 64 })],
+      new Map([["run-1", [FINDING]]]),
+    );
+    hoverRow("Security Reviewer");
+    expect(screen.getByText("N+1 query in user list endpoint")).toBeInTheDocument();
+    expect(screen.getByText("1 findings in this run")).toBeInTheDocument();
+  });
+
+  it("a run with no findings gets no panel", () => {
+    vi.useFakeTimers();
+    renderRuns([run({ status: "done", findings_count: 0, blockers: 0, score: 95 })], new Map());
+    hoverRow("Security Reviewer");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 });

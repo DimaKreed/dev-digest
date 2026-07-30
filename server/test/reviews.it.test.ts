@@ -220,7 +220,15 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
 
     // …and the PR list rolls the latest COMPLETED run's cost onto the row.
     const pulls = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/pulls` })).json();
-    expect(pulls.find((p: { number: number }) => p.number === pr.number).cost_usd).toBe(run!.costUsd);
+    const listRow = pulls.find((p: { number: number }) => p.number === pr.number);
+    expect(listRow.cost_usd).toBe(run!.costUsd);
+
+    // The FINDINGS column rolls up the same findings the detail page shows, so
+    // the phantom WARNING the grounding gate dropped must NOT appear here —
+    // only the one CRITICAL that survived.
+    expect(listRow.findings_critical).toBe(1);
+    expect(listRow.findings_warning).toBe(0);
+    expect(listRow.findings_suggestion).toBe(0);
 
     await app.close();
   });

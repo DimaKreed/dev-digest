@@ -1,12 +1,19 @@
 "use client";
 
 import React, { useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { Icon, Badge, Button, SectionLabel, EmptyState } from "@devdigest/ui";
 import { RunStatus } from "../RunStatus";
 import { RunHistory } from "../RunHistory/RunHistory";
 import { ReviewRunAccordion } from "../ReviewRunAccordion";
 import { s } from "./styles";
-import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
+import type {
+  FindingRecord,
+  ReviewRecord,
+  RunSummary,
+  PrCommit,
+  Severity,
+} from "@devdigest/shared";
 import type { UseMutationResult } from "@tanstack/react-query";
 
 interface FindingsTabProps {
@@ -14,7 +21,10 @@ interface FindingsTabProps {
   liveRunIds: string[];
   reviewRunning: boolean;
   lethalTrifecta: FindingRecord[];
+  /** Already narrowed by the severity filter upstream (page.tsx). */
   runs: ReviewRecord[];
+  /** Active severity filter, or null. Narrows the timeline and each panel. */
+  severity: Severity | null;
   prRuns: RunSummary[] | undefined;
   prCommits: PrCommit[];
   cancelMutation: UseMutationResult<any, any, string, any>;
@@ -32,6 +42,7 @@ export function FindingsTab({
   reviewRunning,
   lethalTrifecta,
   runs,
+  severity,
   prRuns,
   prCommits,
   cancelMutation,
@@ -41,6 +52,7 @@ export function FindingsTab({
   onDelete,
   onRunDone,
 }: FindingsTabProps) {
+  const t = useTranslations("prReview");
   const handleCancelAll = useCallback(() => {
     liveRunIds.forEach((id) => cancelMutation.mutate(id));
   }, [liveRunIds, cancelMutation]);
@@ -78,6 +90,26 @@ export function FindingsTab({
     for (const r of prRuns ?? []) m.set(r.run_id, r.cost_usd);
     return m;
   }, [prRuns]);
+
+  // Findings live on the review, the timeline renders RunSummary rows — join
+  // the two by run_id so a run card can peek at what it found (same trick as
+  // costByRunId above).
+  const findingsByRunId = React.useMemo(() => {
+    const m = new Map<string, FindingRecord[]>();
+    for (const r of runs) if (r.run_id) m.set(r.run_id, r.findings);
+    return m;
+  }, [runs]);
+
+  // Under a severity filter the timeline shows only the runs still listed
+  // below. `runs` arrives pre-filtered, so its run_ids are the allowlist —
+  // same join-by-run_id trick as costByRunId. Commits always stay: they're
+  // the chronological markers the run rows are read against.
+  const timelineRuns = React.useMemo(() => {
+    const all = prRuns ?? [];
+    if (!severity) return all;
+    const keep = new Set(runs.map((r) => r.run_id).filter((id): id is string => id != null));
+    return all.filter((r) => keep.has(r.run_id));
+  }, [prRuns, runs, severity]);
 
   return (
     <section>
@@ -128,7 +160,7 @@ export function FindingsTab({
         </div>
       )}
 
-      {((prRuns && prRuns.length > 0) || prCommits.length > 0) && (
+      {(timelineRuns.length > 0 || prCommits.length > 0) && (
         <div style={s.timelineSection}>
           <SectionLabel
             icon="Activity"
@@ -137,7 +169,10 @@ export function FindingsTab({
             Timeline
           </SectionLabel>
           <RunHistory
-            runs={prRuns ?? []}
+            runs={timelineRuns}
+            findingsByRunId={findingsByRunId}
+            repoFullName={repoFullName}
+            headSha={headSha}
             commits={prCommits}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
@@ -153,7 +188,13 @@ export function FindingsTab({
         Review runs
       </SectionLabel>
       {runs.length === 0 ? (
-        reviewRunning || liveRunIds.length > 0 ? null : (
+        severity ? (
+          <EmptyState
+            icon="Filter"
+            title={t("severityFilter.emptyTitle", { severity })}
+            body={t("severityFilter.emptyBody")}
+          />
+        ) : reviewRunning || liveRunIds.length > 0 ? null : (
           <EmptyState
             icon="Sparkles"
             title="No findings yet"
@@ -170,6 +211,7 @@ export function FindingsTab({
             defaultOpen={i === 0}
             repoFullName={repoFullName}
             headSha={headSha}
+            severity={severity}
             costUsd={review.run_id ? costByRunId.get(review.run_id) ?? null : null}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}

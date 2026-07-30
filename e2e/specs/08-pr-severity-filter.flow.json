@@ -1,0 +1,23 @@
+{
+  "name": "PR detail severity counters filter the Agent runs tab",
+  "description": "From PR #482, open the Agent runs tab and drive the severity counter chips in the PR header. The seeded review run holds exactly one CRITICAL ('Hardcoded Stripe secret key in commit') and one WARNING ('N+1 query in user list endpoint'), so each level has something to reveal and SUGGESTION renders disabled at 0. Asserts that a chip click writes ?severity to the URL and that the matching finding survives the filter, then that toggling the same chip off brings the other level's finding back — which can only happen if the filter was really applied and then cleared. Exclusion itself (the other card disappearing) is asserted in the FindingsPanel unit test: the runner has no not-present assertion. Read-only seeded data (no model call). Assumes a freshly-seeded DB where acme/payments-api (PR #482) is the first repo — run locally via the hermetic stack (see e2e/README.md).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the PR row" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Agent runs"], "label": "switch to the Agent runs tab" },
+    { "cmd": ["wait", "--url", "tab=findings"], "label": "findings tab is active in the URL" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "baseline: the seeded CRITICAL finding renders" },
+    { "cmd": ["wait", "--text", "N+1 query in user list endpoint"], "label": "baseline: the seeded WARNING finding renders" },
+    { "cmd": ["find", "role", "button", "click", "--name", "CRITICAL"], "label": "select the CRITICAL counter" },
+    { "cmd": ["wait", "--url", "severity=critical"], "label": "the filter is in the URL" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the CRITICAL finding survives its own filter" },
+    { "cmd": ["find", "role", "button", "click", "--name", "WARNING"], "label": "switch the filter to WARNING" },
+    { "cmd": ["wait", "--url", "severity=warning"], "label": "the URL follows the new level" },
+    { "cmd": ["wait", "--text", "N+1 query in user list endpoint"], "label": "the WARNING finding survives its own filter" },
+    { "cmd": ["find", "role", "button", "click", "--name", "WARNING"], "label": "toggle the active level off" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "clearing the filter brings the CRITICAL finding back" }
+  ]
+}
