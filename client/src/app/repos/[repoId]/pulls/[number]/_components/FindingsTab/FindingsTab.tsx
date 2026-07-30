@@ -71,6 +71,14 @@ export function FindingsTab({
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
 
+  // Run cost lives on the run row, not on the review — join the two here by
+  // run_id so each review-run header can show what that run cost.
+  const costByRunId = React.useMemo(() => {
+    const m = new Map<string, number | null>();
+    for (const r of prRuns ?? []) m.set(r.run_id, r.cost_usd);
+    return m;
+  }, [prRuns]);
+
   return (
     <section>
       {liveRunIds.length > 0 && (
@@ -162,6 +170,7 @@ export function FindingsTab({
             defaultOpen={i === 0}
             repoFullName={repoFullName}
             headSha={headSha}
+            costUsd={review.run_id ? costByRunId.get(review.run_id) ?? null : null}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}
           />
