@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "devdigest-conventions",
+  "displayName": "DevDigest Conventions",
+  "version": "1.0.0",
+  "description": "Coding conventions extracted from acme/payments-api by DevDigest, each rule verified against real code before it was included.",
+  "author": {
+    "name": "DevDigest",
+    "url": "https://github.com/DimaKreed/dev-digest"
+  },
+  "homepage": "https://github.com/DimaKreed/dev-digest/tree/main/plugins/devdigest-conventions",
+  "repository": "https://github.com/DimaKreed/dev-digest",
+  "keywords": ["conventions", "code-review", "typescript", "devdigest"]
+}
