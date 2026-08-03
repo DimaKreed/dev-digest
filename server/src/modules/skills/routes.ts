@@ -33,6 +33,8 @@ const CreateSkillBody = z.object({
   body: z.string().min(1),
   enabled: z.boolean().optional(),
   note: z.string().optional(),
+  /** Provenance for a generated skill — the files its rules were verified in. */
+  evidence_files: z.array(z.string()).optional(),
 });
 
 const UpdateSkillBody = z.object({
@@ -76,6 +78,7 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
       ...(b.source !== undefined ? { source: b.source } : {}),
       ...(b.enabled !== undefined ? { enabled: b.enabled } : {}),
       ...(b.note !== undefined ? { note: b.note } : {}),
+      ...(b.evidence_files !== undefined ? { evidenceFiles: b.evidence_files } : {}),
     });
     reply.status(201);
     return skill;
