@@ -107,7 +107,9 @@ export function partitionThreads(
 
 // ---- styles (layout only; cards/inputs/buttons reuse @devdigest/ui) ----
 export const cs = {
-  rowWrap: { position: "relative" } satisfies CSSProperties,
+  // scroll-margin clears the sticky PR header when a deep link scrolls this
+  // row into view (it's the element the ref sits on).
+  rowWrap: { position: "relative", scrollMarginTop: "var(--sticky-header-h)" } satisfies CSSProperties,
   addBtn: {
     position: "absolute",
     left: 2,

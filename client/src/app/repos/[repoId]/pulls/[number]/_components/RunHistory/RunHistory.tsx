@@ -92,6 +92,8 @@ export function RunHistory({
   findingsByRunId,
   repoFullName,
   headSha,
+  onOpenFinding,
+  onOpenFile,
   onOpenTrace,
   onGoToReview,
   onDelete,
@@ -103,6 +105,9 @@ export function RunHistory({
   findingsByRunId?: Map<string, FindingRecord[]>;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Peek-panel actions — reveal a finding, or open its file in the diff tab. */
+  onOpenFinding?: (findingId: string) => void;
+  onOpenFile?: (file: string, startLine: number, endLine: number) => void;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -254,6 +259,8 @@ export function RunHistory({
                 headingKey="inThisRun"
                 repoFullName={repoFullName}
                 headSha={headSha}
+                onOpenFinding={onOpenFinding}
+                onOpenFile={onOpenFile}
               />
             )}
           </HoverCard>

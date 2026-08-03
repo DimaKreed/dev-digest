@@ -18,6 +18,9 @@ export function FindingsPanel({
   repoFullName,
   headSha,
   severity = null,
+  targetFindingId = null,
+  targetNonce = 0,
+  onOpenFile,
 }: {
   findings: FindingRecord[];
   prId: string;
@@ -25,6 +28,10 @@ export function FindingsPanel({
   headSha?: string | null;
   /** Page-level severity filter; null shows every level. */
   severity?: Severity | null;
+  /** `?finding=` deep-link target — focuses, expands and scrolls to that card. */
+  targetFindingId?: string | null;
+  targetNonce?: number;
+  onOpenFile?: (file: string, startLine: number, endLine: number) => void;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
@@ -35,6 +42,13 @@ export function FindingsPanel({
     () => visibleFindings(findings, hideLow, severity),
     [findings, hideLow, severity],
   );
+
+  // A deep-linked finding takes over the j/k focus so the existing `focused`
+  // ring marks it, instead of leaving the highlight on whatever was first.
+  const targetIdx = targetFindingId ? shown.findIndex((f) => f.id === targetFindingId) : -1;
+  React.useEffect(() => {
+    if (targetIdx >= 0) setFocusIdx(targetIdx);
+  }, [targetIdx, targetNonce]);
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -73,6 +87,8 @@ export function FindingsPanel({
               pending={action.isPending}
               repoFullName={repoFullName}
               headSha={headSha}
+              onOpenFile={onOpenFile}
+              scrollTo={i === targetIdx ? targetNonce : undefined}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
             />
           ))

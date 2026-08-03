@@ -36,6 +36,16 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
     [reviews],
   );
 
+  // The peek panel navigates to the PR detail page with the target in the URL,
+  // which is exactly what the detail page itself writes for the same actions.
+  const prHref = `/repos/${repoId}/pulls/${pr.number}`;
+  const openFinding = (findingId: string) =>
+    router.push(`${prHref}?tab=findings&finding=${findingId}`);
+  const openFile = (file: string, startLine: number, endLine: number) => {
+    const line = endLine !== startLine ? `${startLine}-${endLine}` : `${startLine}`;
+    router.push(`${prHref}?tab=diff&file=${encodeURIComponent(file)}&line=${line}`);
+  };
+
   const st = STATUS_META[pr.status] ?? STATUS_META.needs_review!;
   const { size, lines } = sizeOf(pr);
   const reviewed = pr.score != null; // null score ⇒ PR has never been reviewed
@@ -121,6 +131,8 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
                     <FindingsHoverList
                       findings={items}
                       loading={peekLoading && items.length === 0}
+                      onOpenFinding={openFinding}
+                      onOpenFile={openFile}
                     />
                   );
                 }}

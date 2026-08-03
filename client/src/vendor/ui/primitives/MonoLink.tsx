@@ -41,8 +41,14 @@ export function MonoLink({
 
   return (
     <button
+      type="button"
       className="mono"
-      onClick={onClick}
+      // Same guard the anchor branch has: these sit inside click-to-navigate
+      // rows, and without it the ancestor's handler fires too.
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.();
+      }}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
       style={style}

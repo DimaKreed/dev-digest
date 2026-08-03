@@ -20,6 +20,8 @@ export function FindingCard({
   pending,
   repoFullName,
   headSha,
+  onOpenFile,
+  scrollTo,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -28,18 +30,35 @@ export function FindingCard({
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Opens this finding's file:line in the app's diff viewer. */
+  onOpenFile?: (file: string, startLine: number, endLine: number) => void;
+  /** Set (to a nonce) when this card is the `?finding=` deep-link target —
+   *  expands and scrolls itself into view. */
+  scrollTo?: number;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
+  const rootRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (scrollTo == null) return;
+    setExpanded(true);
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [scrollTo]);
   const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
   const accepted = !!f.accepted_at;
   const dismissed = !!f.dismissed_at;
   const muted = accepted || dismissed;
 
   return (
-    <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
+    <div ref={rootRef} data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
       <div onClick={() => setExpanded((e) => !e)} style={s.header}>
-        <FindingSummaryRow f={f} repoFullName={repoFullName} headSha={headSha} />
+        <FindingSummaryRow
+          f={f}
+          repoFullName={repoFullName}
+          headSha={headSha}
+          onOpenFile={onOpenFile}
+        />
         <Icon.ChevronDown size={16} style={s.chevron(expanded)} />
       </div>
 

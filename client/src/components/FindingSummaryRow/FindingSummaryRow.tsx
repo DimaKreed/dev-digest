@@ -7,6 +7,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import {
+  Icon,
   SeverityBadge,
   CategoryTag,
   MonoLink,
@@ -28,6 +29,8 @@ export function FindingSummaryRow({
   repoFullName,
   headSha,
   rationaleClamp,
+  onOpen,
+  onOpenFile,
 }: {
   f: FindingRecord;
   repoFullName?: string | null;
@@ -35,6 +38,11 @@ export function FindingSummaryRow({
   /** Show the rationale clamped to this many lines. Omit to hide it entirely
    *  (FindingCard renders the full markdown in its expanded body instead). */
   rationaleClamp?: number;
+  /** Makes the whole row a control that opens this finding. Omit inside
+   *  FindingCard, whose header already owns the click (expand/collapse). */
+  onOpen?: () => void;
+  /** Opens the finding's file:line in the app's own diff viewer. */
+  onOpenFile?: (file: string, startLine: number, endLine: number) => void;
 }) {
   const t = useTranslations("prReview");
   const fileHref =
@@ -46,7 +54,28 @@ export function FindingSummaryRow({
   const muted = accepted || dismissed;
 
   return (
-    <div style={s.root}>
+    <div
+      style={s.root(!!onOpen)}
+      {...(onOpen
+        ? {
+            role: "button",
+            tabIndex: 0,
+            // Stop here rather than relying on the container: this row is a
+            // control, and it's routinely nested inside another one.
+            onClick: (e: React.MouseEvent) => {
+              e.stopPropagation();
+              onOpen();
+            },
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                onOpen();
+              }
+            },
+          }
+        : {})}
+    >
       <div style={s.badgeWrap}>
         <SeverityBadge severity={f.severity as Severity} compact />
       </div>
@@ -58,9 +87,30 @@ export function FindingSummaryRow({
           {dismissed && <span style={s.dismissedTag}>{t("finding.dismissed")}</span>}
         </div>
         <div style={s.metaRow}>
-          <MonoLink href={fileHref}>
+          {/* In-app first: opens our own diff at this file and line range.
+              MonoLink stops propagation on both branches, so this never also
+              triggers the row's own open or FindingCard's expand. */}
+          <MonoLink
+            onClick={
+              onOpenFile ? () => onOpenFile(f.file, f.start_line, f.end_line) : undefined
+            }
+            href={onOpenFile ? undefined : fileHref}
+          >
             {f.file}:{lineLabel(f)}
           </MonoLink>
+          {onOpenFile && fileHref && (
+            <a
+              href={fileHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={t("finding.viewOnGithub")}
+              aria-label={t("finding.viewOnGithub")}
+              onClick={(e) => e.stopPropagation()}
+              style={s.githubLink}
+            >
+              <Icon.ExternalLink size={12} />
+            </a>
+          )}
           <ConfidenceNum value={f.confidence} />
         </div>
         {rationaleClamp != null && <div style={s.rationale(rationaleClamp)}>{f.rationale}</div>}

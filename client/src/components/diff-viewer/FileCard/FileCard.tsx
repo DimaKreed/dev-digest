@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
 import type { PrFile } from "@/lib/types";
 import { AUTO_EXPAND_MAX_LINES } from "../constants";
-import { parsePatch, type Line } from "../helpers";
+import { parsePatch, lineInRange, type Line, type DiffTarget } from "../helpers";
 import {
   buildThreads,
   keysForLine,
@@ -30,12 +30,44 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
   return out;
 }
 
-export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
+export function FileCard({
+  file,
+  commenting,
+  target,
+}: {
+  file: PrFile;
+  commenting?: DiffCommentApi;
+  /** Non-null only for the deep-linked file. */
+  target?: DiffTarget | null;
+}) {
   const t = useTranslations("shell");
   const [open, setOpen] = React.useState(
     (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
   );
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
+
+  // A large file starts collapsed, and while collapsed its lines aren't in the
+  // DOM at all — so expanding is a precondition for scrolling to one. The
+  // scroll itself belongs to the target CodeLine's mount effect, which by
+  // definition runs after this expansion has painted.
+  const targetNonce = target?.nonce;
+  React.useEffect(() => {
+    if (target) setOpen(true);
+  }, [target, targetNonce]);
+
+  /** Index of the first row inside the target range, or -1. */
+  const scrollToIdx = React.useMemo(
+    () => (target ? lines.findIndex((ln) => lineInRange(ln, target.start, target.end)) : -1),
+    [lines, target],
+  );
+
+  // Fallback when the target line isn't in the diff at all (a finding can point
+  // at a line outside the patch hunks) — at least land on the right file.
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!target || scrollToIdx !== -1) return;
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [target, targetNonce, scrollToIdx]);
 
   // Group this file's comments into threads, then split into ones we can anchor
   // to a rendered line vs. "outdated" (GitHub dropped the line / it's not here).
@@ -53,7 +85,7 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
     : 0;
 
   return (
-    <div style={s.fileCard}>
+    <div ref={rootRef} data-file-path={file.path} style={s.fileCard}>
       <div onClick={() => setOpen((o) => !o)} style={s.fileHeader}>
         <Icon.ChevronRight size={13} style={chevronFor(open)} />
         <Icon.FileText size={14} style={s.fileIcon} />
@@ -85,6 +117,8 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
                 path={file.path}
                 threads={threadsForLine(ln, matched)}
                 commenting={commenting}
+                highlighted={!!target && lineInRange(ln, target.start, target.end)}
+                scrollTo={i === scrollToIdx ? targetNonce : undefined}
               />
             ))
           )}

@@ -104,6 +104,11 @@ export function HoverCard({
           role="tooltip"
           onMouseEnter={clearTimer}
           onMouseLeave={() => close(CLOSE_DELAY)}
+          // `position: fixed` moves the panel visually but NOT in the React
+          // tree — it stays a descendant of whatever the trigger sits inside.
+          // Without this, a click in the panel also fires that ancestor's
+          // handler (e.g. the PR row's navigate), silently winning the race.
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
             top: coords.top,

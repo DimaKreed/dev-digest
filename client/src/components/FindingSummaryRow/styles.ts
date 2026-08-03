@@ -3,14 +3,16 @@ import type { CSSProperties } from "react";
 /** Co-located styles for FindingSummaryRow (moved out of FindingCard/styles.ts
  *  when the collapsed-header row became shared with the findings hover panel). */
 export const s = {
-  root: {
+  root: (clickable: boolean): CSSProperties => ({
     display: "flex",
     alignItems: "flex-start",
     gap: 12,
     // Fills its parent row so a sibling (FindingCard's chevron) sits flush right.
     flex: 1,
     minWidth: 0,
-  } satisfies CSSProperties,
+    textAlign: "left",
+    cursor: clickable ? "pointer" : "default",
+  }),
   badgeWrap: { paddingTop: 1 } satisfies CSSProperties,
   main: { flex: 1, minWidth: 0 } satisfies CSSProperties,
   titleRow: {
@@ -36,6 +38,13 @@ export const s = {
     alignItems: "center",
     gap: 12,
     marginTop: 5,
+  } satisfies CSSProperties,
+  /** The `↗` escape hatch to GitHub, now that file:line navigates in-app. */
+  githubLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    color: "var(--text-muted)",
+    marginLeft: -8,
   } satisfies CSSProperties,
   rationale: (lines: number): CSSProperties => ({
     marginTop: 6,

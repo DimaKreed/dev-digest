@@ -75,3 +75,65 @@ describe("FindingSummaryRow", () => {
     expect(onRowClick).not.toHaveBeenCalled();
   });
 });
+
+describe("FindingSummaryRow navigation", () => {
+  it("is not a control unless onOpen is given", () => {
+    renderRow();
+    expect(screen.queryByRole("button", { name: /Hardcoded/ })).not.toBeInTheDocument();
+  });
+
+  it("opens the finding on row click and on Enter", () => {
+    const onOpen = vi.fn();
+    renderRow(FINDING, { onOpen });
+
+    const row = screen.getByRole("button", { name: /Hardcoded/ });
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not leak the row's click or Enter to a clickable ancestor", () => {
+    const onOpen = vi.fn();
+    const ancestor = vi.fn();
+    render(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <div onClick={ancestor} onKeyDown={ancestor}>
+          <FindingSummaryRow f={FINDING} onOpen={onOpen} />
+        </div>
+      </NextIntlClientProvider>,
+    );
+
+    const row = screen.getByRole("button", { name: /Hardcoded/ });
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: "Enter" });
+
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(ancestor).not.toHaveBeenCalled();
+  });
+
+  it("opens the file:line in-app without also opening the finding", () => {
+    const onOpen = vi.fn();
+    const onOpenFile = vi.fn();
+    renderRow(FINDING, { onOpen, onOpenFile });
+
+    fireEvent.click(screen.getByText("src/config.ts:12"));
+    expect(onOpenFile).toHaveBeenCalledWith("src/config.ts", 12, 12);
+    // The row is a control too — the link must not bubble into it.
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("keeps GitHub reachable via a separate link once file:line goes in-app", () => {
+    renderRow(FINDING, {
+      onOpenFile: vi.fn(),
+      repoFullName: "acme/payments-api",
+      headSha: "abc123",
+    });
+
+    const gh = screen.getByRole("link", { name: "Open this file on GitHub" });
+    expect(gh).toHaveAttribute(
+      "href",
+      "https://github.com/acme/payments-api/blob/abc123/src/config.ts#L12",
+    );
+    expect(gh).toHaveAttribute("target", "_blank");
+  });
+});

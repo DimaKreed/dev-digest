@@ -2,7 +2,7 @@
 
 import React from "react";
 import { SectionLabel, Button } from "@devdigest/ui";
-import { DiffViewer, type DiffCommentApi } from "@/components/diff-viewer";
+import { DiffViewer, type DiffCommentApi, type DiffTarget } from "@/components/diff-viewer";
 import { usePrComments, useCreatePrComment } from "@/lib/hooks/reviews";
 import { notify } from "@/lib/toast";
 import type { PrFile } from "@devdigest/shared";
@@ -13,9 +13,11 @@ interface DiffTabProps {
   files: PrFile[];
   /** Inline commenting is offered only on open PRs (GitHub rejects otherwise). */
   canComment?: boolean;
+  /** `?file=…&line=…` deep link from a finding's file reference. */
+  target?: DiffTarget | null;
 }
 
-export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
+export function DiffTab({ prId, filesCount, files, canComment, target }: DiffTabProps) {
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
   // Comments start hidden so the diff is clean by default — toggle to reveal.
@@ -59,7 +61,7 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
       >
         Files changed · {filesCount} files
       </SectionLabel>
-      <DiffViewer files={files} commenting={commenting} />
+      <DiffViewer files={files} commenting={commenting} target={target} />
     </section>
   );
 }

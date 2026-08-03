@@ -22,6 +22,7 @@ import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context"
 import { ApiError } from "../../../../../lib/api";
 import { githubPrUrl } from "../../../../../lib/github-urls";
 import { parseSeverity, latestRunPerAgent, countBySeverity, runMatches } from "@/lib/severity";
+import { parseLineRange, type DiffTarget } from "@/components/diff-viewer";
 import type { FindingRecord, Severity } from "@devdigest/shared";
 
 export default function PRDetailPage() {
@@ -90,6 +91,32 @@ export default function PRDetailPage() {
   const visibleRuns = severity ? latestRuns.filter((r) => runMatches(r, severity)) : runs;
   const setSeverity = (next: Severity | null) =>
     setParams({ severity: next ? next.toLowerCase() : null, tab: "findings" });
+
+  // Deep links into the two tabs. A nonce makes re-selecting the SAME target
+  // scroll again — the URL wouldn't change, so nothing downstream would react.
+  const [targetNonce, bumpNonce] = React.useReducer((n: number) => n + 1, 0);
+  const targetFindingId = search.get("finding");
+  const targetRunIdForFinding =
+    runs.find((r) => r.findings.some((f) => f.id === targetFindingId))?.run_id ?? null;
+
+  const lineRange = parseLineRange(search.get("line"));
+  const targetFile = search.get("file");
+  const diffTarget: DiffTarget | null =
+    targetFile && lineRange
+      ? { path: targetFile, start: lineRange.start, end: lineRange.end, nonce: targetNonce }
+      : null;
+
+  const openFinding = (findingId: string) => {
+    bumpNonce();
+    // Clearing ?severity matters: a finding of another level would be filtered
+    // off-screen and the click would silently go nowhere.
+    setParams({ tab: "findings", finding: findingId, severity: null, file: null, line: null });
+  };
+  const openFile = (file: string, startLine: number, endLine: number) => {
+    bumpNonce();
+    const line = endLine !== startLine ? `${startLine}-${endLine}` : `${startLine}`;
+    setParams({ tab: "diff", file, line, finding: null });
+  };
 
   const repoName = activeRepo?.full_name ?? repoId;
   // The real "owner/repo" (null until the repo is loaded) — used to build
@@ -162,6 +189,11 @@ export default function PRDetailPage() {
             lethalTrifecta={lethalTrifecta}
             runs={visibleRuns}
             severity={severity}
+            targetFindingId={targetFindingId}
+            targetRunIdForFinding={targetRunIdForFinding}
+            targetNonce={targetNonce}
+            onOpenFinding={openFinding}
+            onOpenFile={openFile}
             prRuns={prRuns}
             prCommits={pr.commits}
             repoFullName={repoFullName}
@@ -186,6 +218,7 @@ export default function PRDetailPage() {
             filesCount={pr.files_count}
             files={pr.files}
             canComment={pr.status === "open"}
+            target={diffTarget}
           />
         )}
       </div>

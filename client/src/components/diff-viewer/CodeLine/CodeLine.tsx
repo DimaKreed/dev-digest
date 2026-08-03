@@ -14,14 +14,28 @@ export function CodeLine({
   path,
   threads,
   commenting,
+  highlighted,
+  scrollTo,
 }: {
   ln: Line;
   path: string;
   threads: CommentThread[];
   commenting?: DiffCommentApi;
+  /** Inside the deep-linked line range. */
+  highlighted?: boolean;
+  /** Set (to the target's nonce) on the FIRST row of the range. This row
+   *  scrolls itself: it only mounts once its file card has expanded, so doing
+   *  it here avoids the expand-and-scroll-in-one-tick trap. */
+  scrollTo?: number;
 }) {
   const [hover, setHover] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
+  const rowRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (scrollTo == null) return;
+    rowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [scrollTo]);
 
   if (ln.kind === "hunk") {
     return (
@@ -37,11 +51,12 @@ export function CodeLine({
 
   return (
     <div
+      ref={rowRef}
       style={cs.rowWrap}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div style={lineRowFor(ln.kind)}>
+      <div data-highlighted={highlighted || undefined} style={lineRowFor(ln.kind, highlighted)}>
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
           {showAdd && target && (
             <button

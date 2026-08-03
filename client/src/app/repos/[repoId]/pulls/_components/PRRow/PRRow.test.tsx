@@ -184,4 +184,29 @@ describe("PRRow findings peek", () => {
     hover(chip("SUGGESTION"));
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
+
+  it("clicking a finding opens the PR detail page on that finding", () => {
+    vi.useFakeTimers();
+    renderRow();
+    hover(chip("CRITICAL"));
+
+    fireEvent.click(screen.getByRole("button", { name: /title f1/ }));
+    // Times(1) first, and it matters: the panel lives inside the row's own
+    // click-to-navigate div, so an unguarded click pushes twice and the row's
+    // plain PR URL wins — toHaveBeenCalledWith alone passes right through that.
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith("/repos/repo-1/pulls/482?tab=findings&finding=f1");
+  });
+
+  it("clicking a finding's file:line opens the diff tab at that range", () => {
+    vi.useFakeTimers();
+    renderRow();
+    hover(chip("CRITICAL"));
+
+    fireEvent.click(screen.getByText("src/config.ts:12"));
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith(
+      "/repos/repo-1/pulls/482?tab=diff&file=src%2Fconfig.ts&line=12",
+    );
+  });
 });

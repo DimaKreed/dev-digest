@@ -82,6 +82,27 @@ describe("HoverCard", () => {
     expect(screen.getByText("lazy body")).toBeInTheDocument();
   });
 
+  it("does not leak a click in the panel to a clickable ancestor", () => {
+    // The panel is `position: fixed` but still a React descendant of whatever
+    // the trigger sits inside — here, a row that navigates on click.
+    vi.useFakeTimers();
+    const ancestor = vi.fn();
+    render(
+      <div onClick={ancestor}>
+        <HoverCard trigger={<button type="button">peek</button>}>
+          <button type="button">inside</button>
+        </HoverCard>
+      </div>,
+    );
+
+    fireEvent.mouseEnter(screen.getByText("peek"));
+    tick(200);
+    fireEvent.click(screen.getByText("inside"));
+    fireEvent.click(screen.getByRole("tooltip"));
+
+    expect(ancestor).not.toHaveBeenCalled();
+  });
+
   it("reports open state to the caller", () => {
     vi.useFakeTimers();
     const onOpenChange = vi.fn();

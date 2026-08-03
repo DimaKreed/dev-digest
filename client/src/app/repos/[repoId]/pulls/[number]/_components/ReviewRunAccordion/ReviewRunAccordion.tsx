@@ -34,6 +34,8 @@ export function ReviewRunAccordion({
   costUsd = null,
   targetRunId = null,
   targetNonce = 0,
+  targetFindingId = null,
+  onOpenFile,
 }: {
   review: ReviewRecord;
   prId: string;
@@ -51,18 +53,33 @@ export function ReviewRunAccordion({
    *  (driven from the Timeline: clicking an agent name navigates here). */
   targetRunId?: string | null;
   targetNonce?: number;
+  /** `?finding=` deep-link target. When this run holds it, the accordion opens
+   *  and FindingsPanel takes over the scroll — the card can only scroll itself
+   *  once it exists, which is after this expansion has painted. */
+  targetFindingId?: string | null;
+  onOpenFile?: (file: string, startLine: number, endLine: number) => void;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const findings = review.findings;
+  const holdsTarget = !!targetFindingId && findings.some((f) => f.id === targetFindingId);
+
   React.useEffect(() => {
-    if (review.run_id && review.run_id === targetRunId) {
-      setOpen(true);
-      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    if (holdsTarget) setOpen(true);
+  }, [holdsTarget, targetNonce]);
+
+  React.useEffect(() => {
+    if (!review.run_id || review.run_id !== targetRunId) return;
+    setOpen(true);
+    // Scroll on the NEXT frame: setOpen has only been queued at this point, so
+    // scrolling now measures the still-collapsed card and lands short.
+    const id = requestAnimationFrame(() =>
+      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+    return () => cancelAnimationFrame(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetRunId, targetNonce, review.run_id]);
   const del = useDeleteReview(prId);
-  const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
   const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
 
@@ -168,6 +185,9 @@ export function ReviewRunAccordion({
             repoFullName={repoFullName}
             headSha={headSha}
             severity={severity}
+            targetFindingId={holdsTarget ? targetFindingId : null}
+            targetNonce={targetNonce}
+            onOpenFile={onOpenFile}
           />
         </div>
       )}

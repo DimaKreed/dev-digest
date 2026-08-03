@@ -10,6 +10,8 @@ export const s = {
     borderRadius: 7,
     overflow: "hidden",
     background: "var(--bg-elevated)",
+    // Clears the sticky PR header when a deep link scrolls this card into view.
+    scrollMarginTop: "var(--sticky-header-h)",
   } satisfies CSSProperties,
   fileHeader: {
     display: "flex",
@@ -75,10 +77,22 @@ export function chevronFor(open: boolean): CSSProperties {
   };
 }
 
-/** Row background per line kind (add/del tinted, others transparent). */
-export function lineRowFor(kind: Line["kind"]): CSSProperties {
-  const background = kind === "add" ? "var(--code-add)" : kind === "del" ? "var(--code-del)" : "transparent";
-  return { display: "flex", alignItems: "stretch", fontSize: 13, lineHeight: "20px", background };
+/**
+ * Row background per line kind (add/del tinted, others transparent).
+ * A deep-link highlight LAYERS over that tint via an inset rail rather than
+ * replacing the background — overwriting it would erase the add/del signal
+ * and make the diff unreadable exactly where the reader is looking.
+ */
+export function lineRowFor(kind: Line["kind"], highlighted?: boolean): CSSProperties {
+  const tint = kind === "add" ? "var(--code-add)" : kind === "del" ? "var(--code-del)" : "transparent";
+  return {
+    display: "flex",
+    alignItems: "stretch",
+    fontSize: 13,
+    lineHeight: "20px",
+    background: highlighted ? `linear-gradient(var(--accent-bg), var(--accent-bg)), ${tint}` : tint,
+    boxShadow: highlighted ? "inset 3px 0 0 var(--accent)" : undefined,
+  };
 }
 
 /** Gutter sign colour per line kind. */

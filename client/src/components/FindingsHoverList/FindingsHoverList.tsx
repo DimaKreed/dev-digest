@@ -21,6 +21,8 @@ export function FindingsHoverList({
   headingKey = "count",
   repoFullName,
   headSha,
+  onOpenFinding,
+  onOpenFile,
 }: {
   findings: FindingRecord[];
   loading?: boolean;
@@ -28,6 +30,10 @@ export function FindingsHoverList({
   headingKey?: "count" | "inThisRun";
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Row click — reveal this finding on the PR detail page. */
+  onOpenFinding?: (findingId: string) => void;
+  /** file:line click — open the app's diff at that file and range. */
+  onOpenFile?: (file: string, startLine: number, endLine: number) => void;
 }) {
   const t = useTranslations("prReview");
 
@@ -58,6 +64,8 @@ export function FindingsHoverList({
             repoFullName={repoFullName}
             headSha={headSha}
             rationaleClamp={2}
+            onOpen={onOpenFinding ? () => onOpenFinding(f.id) : undefined}
+            onOpenFile={onOpenFile}
           />
         </div>
       ))}

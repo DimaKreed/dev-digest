@@ -25,6 +25,12 @@ interface FindingsTabProps {
   runs: ReviewRecord[];
   /** Active severity filter, or null. Narrows the timeline and each panel. */
   severity: Severity | null;
+  /** `?finding=` deep link: the finding to reveal, and the run that holds it. */
+  targetFindingId: string | null;
+  targetRunIdForFinding: string | null;
+  targetNonce: number;
+  onOpenFinding: (findingId: string) => void;
+  onOpenFile: (file: string, startLine: number, endLine: number) => void;
   prRuns: RunSummary[] | undefined;
   prCommits: PrCommit[];
   cancelMutation: UseMutationResult<any, any, string, any>;
@@ -43,6 +49,11 @@ export function FindingsTab({
   lethalTrifecta,
   runs,
   severity,
+  targetFindingId,
+  targetRunIdForFinding,
+  targetNonce,
+  onOpenFinding,
+  onOpenFile,
   prRuns,
   prCommits,
   cancelMutation,
@@ -82,6 +93,11 @@ export function FindingsTab({
   const handleGoToReview = useCallback((runId: string) => {
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
+
+  // A `?finding=` deep link targets the run that holds it. Its own nonce comes
+  // from the page, so it doesn't fight the timeline's local one above.
+  const runTarget = targetRunIdForFinding ?? target?.runId ?? null;
+  const runNonce = targetRunIdForFinding ? targetNonce : (target?.n ?? 0);
 
   // Run cost lives on the run row, not on the review — join the two here by
   // run_id so each review-run header can show what that run cost.
@@ -173,6 +189,8 @@ export function FindingsTab({
             findingsByRunId={findingsByRunId}
             repoFullName={repoFullName}
             headSha={headSha}
+            onOpenFinding={onOpenFinding}
+            onOpenFile={onOpenFile}
             commits={prCommits}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
@@ -213,8 +231,10 @@ export function FindingsTab({
             headSha={headSha}
             severity={severity}
             costUsd={review.run_id ? costByRunId.get(review.run_id) ?? null : null}
-            targetRunId={target?.runId ?? null}
-            targetNonce={target?.n ?? 0}
+            targetRunId={runTarget}
+            targetNonce={runNonce}
+            targetFindingId={targetFindingId}
+            onOpenFile={onOpenFile}
           />
         ))
       )}

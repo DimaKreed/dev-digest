@@ -16,6 +16,8 @@ export const s = {
     opacity: muted ? 0.6 : 1,
     transition: "opacity .2s, border-color .12s, box-shadow .12s",
     boxShadow: focused ? "0 0 0 1px " + sevColor : "none",
+    // Clears the sticky PR header when a `?finding=` deep link scrolls here.
+    scrollMarginTop: "var(--sticky-header-h)",
   }),
   header: {
     display: "flex",

@@ -24,6 +24,21 @@ f.severity === sev)`) and let the shared state gate only the fetch, since both p
 mounted during the hand-off. See `src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx`.
 _2026-07-30_
 
+### Expanding a collapsed container and scrolling to something inside it cannot happen in one effect
+**Symptom:** `ReviewRunAccordion.tsx` did `setOpen(true)` and `rootRef.scrollIntoView()` in the same
+effect body — `setOpen` is only *queued* there, so the scroll measures the still-collapsed card and
+lands short. The diff viewer makes this much worse: `FileCard` starts collapsed above
+`AUTO_EXPAND_MAX_LINES` (200 changed lines) and renders `{open && …}`, so a target line isn't
+merely mispositioned, it **doesn't exist in the DOM** — no ref, no `getElementById`, nothing.
+**Rule:** split the two. The parent only expands; the *target child* scrolls itself in a mount
+effect, which by definition runs after the expansion has painted — see `scrollTo` on
+`src/components/diff-viewer/CodeLine/CodeLine.tsx` and on
+`_components/FindingCard/FindingCard.tsx`. Where the scrolled node is the container itself and
+there's no child to delegate to, defer with `requestAnimationFrame` (the fix now in
+`ReviewRunAccordion`). Pass a **nonce**, not a boolean — re-selecting the same target must
+re-fire, and a URL param that doesn't change won't do it on its own.
+_2026-07-30_
+
 ## Codebase Patterns
 
 ### Run-level data reaches the review-run header by joining on `run_id` in FindingsTab — not by extending `ReviewRecord`
@@ -49,6 +64,12 @@ grepping `finding` across `src/components/diff-viewer/` returns **nothing** — 
 means building a new list component; putting one in the diff means teaching `DiffViewer` to
 anchor a finding's `file` + `start_line`/`end_line` to diff rows. Each is its own feature, not
 a prop you can thread through.
+_2026-07-30_
+
+**Update:** the diff half of that is now half-built. `DiffViewer` accepts a
+`DiffTarget { path, start, end, nonce }` and will expand the file, tint the new-side rows in
+range and scroll to them (`?file=…&line=44-48`). It still does **not** render findings — no
+titles, no severities, no cards inline. Overview is unchanged and still has no findings list.
 _2026-07-30_
 
 ### Any PR-level findings tally must collapse `reviews` to the latest run per agent first
@@ -78,9 +99,45 @@ HTML. The real hazard is quieter: without `e.stopPropagation()` the row's handle
 `router.push` to the unfiltered PR URL lands *after* the chip's, so the query params vanish with no
 error anywhere.
 **Rule:** any interactive element added inside a PR row must `stopPropagation` first — same idiom as
-the delete button at `_components/ReviewRunAccordion/ReviewRunAccordion.tsx:124`. Assert it by
+the delete button in `_components/ReviewRunAccordion/ReviewRunAccordion.tsx`. Assert it by
 mocking `useRouter` and checking `push` was called exactly **once**; see the last two cases in
 `_components/PRRow/PRRow.test.tsx`.
+_2026-07-30_
+
+**Update — the "exactly once" half of that rule is the part that actually catches it.** A later
+row control shipped broken with a green test: `expect(push).toHaveBeenCalledWith(…finding=f1)`
+passes when *any* call matches, so the bubbled second `push` to the plain PR URL went unseen while
+the adjacent file:line case (which did assert `toHaveBeenCalledTimes(1)`) stayed correct. On a
+router spy, `toHaveBeenCalledWith` alone asserts almost nothing — put `toHaveBeenCalledTimes(1)`
+first, and confirm the new test actually fails before the fix. _2026-08-01_
+
+### Scroll targets on the PR detail page need `--sticky-header-h`, and the scroller is not the window
+**Symptom:** two traps in one. `PrDetailHeader` is `position: sticky; top: 0` and tall (title +
+meta + severity chips + tab bar), so anything scrolled to `block: "start"` lands *underneath* it —
+`ReviewRunAccordion`'s `scrollMarginTop: 16` was visibly too small and would be copied. And the
+page is not the document scroller: `vendor/ui/shell/AppFrame.tsx` puts the content in
+`<main style={{ overflow: "auto" }}>`, so `window.scrollTo` / `documentElement.scrollTop` do
+nothing here.
+**Rule:** use `element.scrollIntoView()` (it finds that ancestor by itself) and set
+`scrollMarginTop: "var(--sticky-header-h)"` on the scrolled element — the token is defined once in
+`src/vendor/ui/styles.css`. Note it must sit on the element the **ref** is on, not on a child:
+in `CodeLine` the ref is the `cs.rowWrap` wrapper, which is why the margin lives there and not in
+`lineRowFor`.
+_2026-07-30_
+
+### Diff line numbers come from a hand-rolled parser, not from the API
+**Symptom:** `PrFile` is `{ path, additions, deletions, patch? }` — a **raw unified-diff string**
+(`vendor/shared/contracts/platform.ts`). Every line number the UI shows is derived client-side by
+`parsePatch` in `src/components/diff-viewer/helpers.ts`, whose final `else` is a catch-all that
+treats *any* unrecognised row as context and increments both counters. A
+`\ No newline at end of file` marker, or the trailing `""` from `patch.split("\n")`, therefore
+shifted every subsequent line number by one — invisible until something keyed on those numbers
+(a deep link, a comment anchor) pointed at the wrong row.
+**Rule:** anything that matches on a line number depends on that parser. Both cases are now
+guarded and regression-tested in `src/components/diff-viewer/helpers.test.ts`; add a case there
+before trusting a new patch shape. Match on the **new** side (`ln.newNo`) — that's what
+`commentTargetFor` already prefers and what a finding describes; deleted lines correctly never
+match. `lineInRange` in the same file is the shared predicate.
 _2026-07-30_
 
 ### An anchored panel must be `position: fixed` here — `absolute` gets clipped by the PR table card
@@ -94,6 +151,17 @@ There is no portal anywhere in the client and no `@floating-ui`/radix to fall ba
 (only by one that establishes a containing block — a transform/filter/`will-change`, none of which
 this app uses), so no portal is needed. It also buys viewport flipping, which `Dropdown` can't do
 for rows near the bottom of a long table. See `src/vendor/ui/kit/HoverCard.tsx`.
+
+**Counterpart — `position: fixed` escapes the *paint* tree, never the *event* tree.** A panel
+positioned out of its container still bubbles clicks to it, because it is unchanged in the React
+tree. Anchoring a HoverCard inside `PRRow`'s click-to-navigate `<div>` therefore made every click
+in the panel *also* navigate the row: the finding's own `push("?tab=findings&finding=…")` was
+immediately overwritten by the row's `push("/repos/…/pulls/482")`, so the PR opened on Overview
+with nothing revealed — and a mis-click on the panel's padding navigated away entirely. Any
+floating overlay built this way needs `onClick={(e) => e.stopPropagation()}` on the panel itself;
+fixing it per call site means re-fixing it for every future panel body. `HoverCard.tsx` now does
+it, guarded by "does not leak a click in the panel to a clickable ancestor" in its test.
+_2026-08-01_
 _2026-07-30_
 
 ## Tool & Library Notes

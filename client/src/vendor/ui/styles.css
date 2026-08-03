@@ -44,6 +44,10 @@
   --code-add-text: #10b981;
   --code-del-text: #ef4444;
   --code-bg: #0c0c0c;
+
+  /* Height of the PR detail page's sticky header. Deep-link scroll targets use
+     it as scroll-margin-top so they don't land underneath it. Theme-agnostic. */
+  --sticky-header-h: 180px;
 }
 
 [data-theme="light"] {
