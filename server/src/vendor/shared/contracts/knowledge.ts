@@ -324,6 +324,8 @@ export const ExtractionStats = z.object({
   dropped_no_snippet: z.number().int(),
   /** Verified, but in fewer than two distinct files. */
   dropped_single_occurrence: z.number().int(),
+  /** Survived verification, but you have already accepted or rejected it. */
+  suppressed: z.number().int(),
   provider: z.string(),
   model: z.string(),
   cost_usd: z.number(),

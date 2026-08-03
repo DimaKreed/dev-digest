@@ -226,6 +226,26 @@ export function toDto(row: ConventionRow): ConventionCandidate {
 // Skill draft
 // ---------------------------------------------------------------------------
 
+/**
+ * Key used to recognise a rule the user has already triaged.
+ *
+ * At `temperature: 0` over an unchanged repo the model re-proposes the same
+ * rules in near-identical wording, so lowercasing and flattening whitespace and
+ * trailing punctuation is enough to match them.
+ *
+ * It will NOT catch a genuine rephrasing — "Use async/await" and "Prefer
+ * async/await over .then()" are different keys and the second would resurface
+ * as pending. Matching that would need embeddings; this is the cheap 90% and is
+ * deliberately not presented as more.
+ */
+export function normalizeRule(rule: string): string {
+  return rule
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[.;:,!]+$/, '')
+    .trim();
+}
+
 /** Lowercase, non-alphanumerics to single dashes, no leading/trailing dash. */
 export function slugify(s: string): string {
   return s

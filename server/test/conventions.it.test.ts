@@ -310,7 +310,7 @@ d('conventions module', () => {
     await app.close();
   });
 
-  it('a second scan REPLACES the previous one rather than appending', async () => {
+  it('a second scan replaces untriaged candidates rather than appending', async () => {
     const app = await makeApp(SAMPLES);
     const res = await app.inject({
       method: 'POST',
@@ -323,6 +323,41 @@ d('conventions module', () => {
     const list = await app.inject({ method: 'GET', url: `/repos/${repoId}/conventions` });
     expect(list.json().candidates).toHaveLength(1);
     conventionId = list.json().candidates[0].id;
+    await app.close();
+  });
+
+  it('a rejected rule is NOT resurrected by the next scan', async () => {
+    const app = await makeApp(SAMPLES);
+
+    const rejected = await app.inject({
+      method: 'PATCH',
+      url: `/conventions/${conventionId}`,
+      payload: { status: 'rejected' },
+    });
+    expect(rejected.statusCode).toBe(200);
+
+    // Same repo, same fixture — the model proposes the identical rule again.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/repos/${repoId}/conventions/extract`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    // It verified, so it counts as verified — but it is not raised again, and
+    // the row keeps the id and the status the user gave it.
+    expect(body.stats.verified).toBe(1);
+    expect(body.stats.suppressed).toBe(1);
+    expect(body.candidates).toHaveLength(1);
+    expect(body.candidates[0]).toMatchObject({ id: conventionId, status: 'rejected' });
+
+    // Put it back so the later tests still see an untriaged candidate.
+    await app.inject({
+      method: 'PATCH',
+      url: `/conventions/${conventionId}`,
+      payload: { status: 'pending' },
+    });
     await app.close();
   });
 

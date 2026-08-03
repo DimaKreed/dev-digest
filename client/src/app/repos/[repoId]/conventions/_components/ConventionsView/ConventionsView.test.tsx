@@ -33,6 +33,7 @@ const STATS: ExtractionStats = {
   dropped_no_file: 3,
   dropped_no_snippet: 2,
   dropped_single_occurrence: 2,
+  suppressed: 0,
   provider: "anthropic",
   model: "claude-sonnet-4",
   cost_usd: 0.021,

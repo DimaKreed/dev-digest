@@ -143,20 +143,51 @@ export class ConventionsRepository {
    * shows a completed scan. Triage state is intentionally not preserved — a new
    * scan is a new set of claims about the current code.
    */
-  async replaceForRepo(
+  /**
+   * Land a fresh scan WITHOUT destroying triage.
+   *
+   * Only untriaged (`pending`) rows are replaced. Anything the user accepted or
+   * rejected survives untouched, and `suppress` — keyed on the caller's
+   * normalised rule text — stops the scan re-proposing it. Wiping the table
+   * instead, as this used to, meant every re-scan resurrected every rejected
+   * rule and the user re-triaged the same noise forever.
+   *
+   * Returns the triaged rows plus the newly inserted ones, and how many
+   * candidates the suppression list swallowed.
+   */
+  async rescanForRepo(
     workspaceId: string,
     repoId: string,
     values: InsertConvention[],
-  ): Promise<ConventionRow[]> {
-    return this.db.transaction(async (tx): Promise<ConventionRow[]> => {
+    ruleKey: (rule: string) => string,
+  ): Promise<{ rows: ConventionRow[]; suppressed: number }> {
+    return this.db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(t.conventions)
+        .where(and(eq(t.conventions.workspaceId, workspaceId), eq(t.conventions.repoId, repoId)));
+      const triaged = existing.filter((r) => r.status !== 'pending');
+
       await tx
         .delete(t.conventions)
-        .where(and(eq(t.conventions.workspaceId, workspaceId), eq(t.conventions.repoId, repoId)));
-      if (values.length === 0) return [];
-      return tx
+        .where(
+          and(
+            eq(t.conventions.workspaceId, workspaceId),
+            eq(t.conventions.repoId, repoId),
+            eq(t.conventions.status, 'pending'),
+          ),
+        );
+
+      const seen = new Set(triaged.map((r) => ruleKey(r.rule)));
+      const fresh = values.filter((v) => !seen.has(ruleKey(v.rule)));
+      const suppressed = values.length - fresh.length;
+
+      if (fresh.length === 0) return { rows: triaged, suppressed };
+      const inserted = await tx
         .insert(t.conventions)
-        .values(values.map((v) => ({ ...v, workspaceId, repoId, status: 'pending' as const })))
+        .values(fresh.map((v) => ({ ...v, workspaceId, repoId, status: 'pending' as const })))
         .returning();
+      return { rows: [...triaged, ...inserted], suppressed };
     });
   }
 

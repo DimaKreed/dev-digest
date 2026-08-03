@@ -70,10 +70,11 @@
     "proposed": "Proposed by model",
     "verified": "Survived verification",
     "droppedNoFile": "Dropped — cited a file we never sampled",
-    "droppedNoSnippet": "Dropped — quoted code not found in the file",
+    "droppedNoSnippet": "Dropped — cited line not found in the file",
     "droppedSingleOccurrence": "Dropped — seen in only one file",
     "model": "Model",
-    "cost": "Cost"
+    "cost": "Cost",
+    "suppressed": "Skipped — already accepted or rejected by you"
   },
   "modal": {
     "title": "Create skill from conventions",

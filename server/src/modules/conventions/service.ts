@@ -22,6 +22,7 @@ import {
   CONFIG_FILES,
   buildSamplePayload,
   buildSkillDraft,
+  normalizeRule,
   sliceLines,
   toDto,
   verifyEvidence,
@@ -203,7 +204,12 @@ export class ConventionsService {
       });
     }
 
-    const rows = await this.repo.replaceForRepo(workspaceId, repoId, inserts);
+    const { rows, suppressed } = await this.repo.rescanForRepo(
+      workspaceId,
+      repoId,
+      inserts,
+      normalizeRule,
+    );
     return {
       candidates: rows.map(toDto),
       stats: {
@@ -214,6 +220,7 @@ export class ConventionsService {
         dropped_no_file: droppedNoFile,
         dropped_no_snippet: droppedNoSnippet,
         dropped_single_occurrence: droppedSingleOccurrence,
+        suppressed,
         provider: choice.provider,
         model: result.model,
         cost_usd: result.costUsd ?? 0,

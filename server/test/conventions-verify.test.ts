@@ -3,6 +3,7 @@ import type { ConventionCandidate } from '@devdigest/shared';
 import {
   buildSamplePayload,
   buildSkillDraft,
+  normalizeRule,
   sliceLines,
   slugify,
   verifyEvidence,
@@ -205,6 +206,20 @@ describe('sliceLines', () => {
 
   it('normalises CRLF so line counts match verifyEvidence', () => {
     expect(sliceLines('a\r\nb\r\nc', 2, 2)).toBe('b\nc');
+  });
+});
+
+describe('normalizeRule', () => {
+  it('treats casing, spacing and trailing punctuation as the same rule', () => {
+    const a = 'Route handlers   resolve tenancy with getContext.';
+    const b = 'route handlers resolve tenancy with getContext';
+    expect(normalizeRule(a)).toBe(normalizeRule(b));
+  });
+
+  it('keeps genuinely different rules apart', () => {
+    expect(normalizeRule('Use async/await')).not.toBe(
+      normalizeRule('Prefer async/await over .then() chains'),
+    );
   });
 });
 

@@ -10,11 +10,16 @@ import type { ExtractionStats } from "@devdigest/shared";
 import { formatCost } from "@/lib/format-usage";
 import { s } from "./styles";
 
-/** The three drop reasons, in the order verification applies them. */
+/**
+ * The drop reasons, in the order they are applied. `suppressed` is last and is
+ * not a verification failure — those rules passed, you had simply triaged them
+ * on an earlier scan and they were not raised again.
+ */
 const DROP_KEYS = [
   ["droppedNoFile", "dropped_no_file"],
   ["droppedNoSnippet", "dropped_no_snippet"],
   ["droppedSingleOccurrence", "dropped_single_occurrence"],
+  ["suppressed", "suppressed"],
 ] as const;
 
 export function ScanReport({
