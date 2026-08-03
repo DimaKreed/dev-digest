@@ -4,6 +4,7 @@ import type { SkillRow, SkillVersionRow, SkipReason } from './ports.js';
 import {
   DEFAULT_SKILL_TYPE,
   EXECUTABLE_EXTENSIONS,
+  FALLBACK_URL_FILENAME,
   MARKDOWN_EXTENSIONS,
   MAX_ARCHIVE_ENTRIES,
   MAX_DERIVED_DESCRIPTION_CHARS,
@@ -167,6 +168,36 @@ function shallowest(paths: string[]): string | undefined {
     const depth = a.split('/').length - b.split('/').length;
     return depth !== 0 ? depth : a.localeCompare(b);
   })[0];
+}
+
+/**
+ * Name the fetched document so `extractSkill` can parse it.
+ *
+ * A URL import is always markdown — the port hands back decoded TEXT, so a
+ * `.zip` could not survive the trip and is deliberately not offered. Any other
+ * extension is therefore replaced rather than trusted: `/docs/rules.html`
+ * becomes `rules.md`, which is honest about what we actually parsed it as. The
+ * basename only ever feeds the fallback skill name; frontmatter and the first
+ * heading both win over it.
+ */
+export function fileNameFromUrl(rawUrl: string): string {
+  let last = '';
+  try {
+    last = baseName(new URL(rawUrl).pathname.replace(/\/+$/, ''));
+  } catch {
+    last = '';
+  }
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(last);
+    } catch {
+      return last;
+    }
+  })();
+  if (!decoded) return FALLBACK_URL_FILENAME;
+  if (isMarkdown(decoded)) return decoded;
+  const stem = stripExtension(decoded);
+  return stem ? `${stem}.md` : FALLBACK_URL_FILENAME;
 }
 
 // ---- Extraction -----------------------------------------------------------

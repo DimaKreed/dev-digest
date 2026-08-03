@@ -286,3 +286,40 @@ export interface SecretsProvider {
    */
   set?(key: SecretKey, value: string): Promise<void>;
 }
+
+// ---------- HTTP (arbitrary outbound fetch, behind an SSRF guard) ----------
+/**
+ * The ONE way a module may pull bytes off the open internet.
+ *
+ * Modules never call `fetch` themselves (arch rule `c4-sdks-only-in-adapters`):
+ * a URL typed by a user is attacker-controlled, and the implementation is where
+ * the SSRF guard, the byte cap, the timeout and the redirect policy live. A
+ * module that wanted "just this one fetch" would be re-implementing all four.
+ *
+ * Every implementation MUST reject non-`https:` schemes and any target that
+ * resolves to a loopback / private / link-local / CGNAT / unique-local address,
+ * re-validate the target of each redirect, and stop reading past `maxBytes`.
+ */
+export interface HttpFetchOptions {
+  /** Whole-request budget, including redirects. */
+  timeoutMs?: number;
+  /** Hard ceiling on the response body; reading stops and aborts past it. */
+  maxBytes?: number;
+  /** Redirect hops to follow; each target is re-validated. */
+  maxRedirects?: number;
+}
+
+export interface HttpTextResponse {
+  /** Final URL actually read, after any redirects. */
+  url: string;
+  text: string;
+  /** Raw `content-type` header, or null when the server sent none. */
+  contentType: string | null;
+  /** Bytes read off the wire (never more than `maxBytes`). */
+  bytes: number;
+}
+
+export interface HttpFetcher {
+  /** GET `url` as UTF-8 text. Throws on a blocked URL, a non-2xx, or an overrun. */
+  fetchText(url: string, opts?: HttpFetchOptions): Promise<HttpTextResponse>;
+}

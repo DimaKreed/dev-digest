@@ -20,6 +20,7 @@ import { SkillImportError } from './helpers.js';
  *   POST   /skills/:id/versions/:version/restore→ restore as a NEW version
  *   GET    /skills/:id/stats                    → per-skill rollup
  *   POST   /skills/import/preview               → parse .md/.zip, WRITES NOTHING
+ *   POST   /skills/import/url                   → fetch + parse a URL, WRITES NOTHING
  *
  * Linking a skill to an agent lives on the agents module
  * (`POST /agents/:id/skills`), which owns the `agent_skills` write side.
@@ -44,6 +45,16 @@ const UpdateSkillBody = z.object({
   body: z.string().min(1).optional(),
   enabled: z.boolean().optional(),
   note: z.string().optional(),
+});
+
+/**
+ * `z.string().url()` accepts `http:`/`file:`/`javascript:` too — it only checks
+ * that the string parses. The scheme allow-list and the SSRF guard live in the
+ * HttpFetcher adapter, which is the single place that can enforce them for
+ * every hop of a redirect chain. This schema is a shape check, nothing more.
+ */
+const ImportUrlBody = z.object({
+  url: z.string().url().max(2048),
 });
 
 const VersionParams = z.object({
@@ -135,8 +146,31 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     const file = await req.file();
     if (!file) throw new ValidationError('No file uploaded');
     const bytes = new Uint8Array(await file.toBuffer());
+    // `await` inside the try is load-bearing: previewImport is async now (it
+    // awaits the injection scan), so a bare `return` would let a rejection skip
+    // this catch entirely and surface as a 500 instead of a 400.
     try {
-      return service.previewImport(file.filename, bytes);
+      return await service.previewImport(file.filename, bytes);
+    } catch (err) {
+      if (err instanceof SkillImportError) {
+        throw new AppError('invalid_skill_import', err.message, 400);
+      }
+      throw err;
+    }
+  });
+
+  /**
+   * Fetch a skill from a URL and return the same preview shape. Like the file
+   * route this WRITES NOTHING — saving is still an explicit POST /skills.
+   *
+   * Everything that makes a user-supplied URL safe to GET (https-only, no
+   * private/loopback/link-local target, byte cap, timeout, per-hop redirect
+   * re-validation) lives in the HttpFetcher adapter, not here.
+   */
+  app.post('/skills/import/url', { schema: { body: ImportUrlBody } }, async (req) => {
+    await getContext(app.container, req);
+    try {
+      return await service.previewImportUrl(req.body.url);
     } catch (err) {
       if (err instanceof SkillImportError) {
         throw new AppError('invalid_skill_import', err.message, 400);

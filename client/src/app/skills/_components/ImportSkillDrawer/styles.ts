@@ -1,7 +1,12 @@
 import type { CSSProperties } from "react";
 
 export const s = {
-  body: { display: "flex", flexDirection: "column", gap: 16 } satisfies CSSProperties,
+  body: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+    marginTop: 18,
+  } satisfies CSSProperties,
   dropzone: (dragging: boolean): CSSProperties => ({
     display: "flex",
     flexDirection: "column",
@@ -69,5 +74,19 @@ export const s = {
     color: "var(--text-secondary)",
   } satisfies CSSProperties,
   error: { fontSize: 13, color: "var(--critical)" } satisfies CSSProperties,
-  footer: { display: "flex", justifyContent: "flex-end", gap: 10 } satisfies CSSProperties,
+  urlRow: { display: "flex", alignItems: "center", gap: 8 } satisfies CSSProperties,
+  urlInput: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  footer: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+  } satisfies CSSProperties,
+  /** Says WHY Save is disabled — a dead button with no explanation is a bug report. */
+  gateHint: {
+    marginRight: "auto",
+    fontSize: 12.5,
+    lineHeight: 1.4,
+    color: "var(--critical)",
+  } satisfies CSSProperties,
 } as const;

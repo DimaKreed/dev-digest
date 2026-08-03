@@ -62,3 +62,37 @@ export const MARKDOWN_EXTENSIONS = ['.md', '.markdown'];
 
 /** Preferred archive entry, matched on basename, case-insensitively. */
 export const PREFERRED_ENTRY_BASENAME = 'skill.md';
+
+// ---- URL import -----------------------------------------------------------
+
+/** Response ceiling for a fetched skill. Matches the archive cap's intent. */
+export const MAX_FETCHED_BYTES = 256 * 1024;
+
+/** Whole-request budget for a URL import, redirects included. */
+export const URL_FETCH_TIMEOUT_MS = 10_000;
+
+/** Filename used when the URL path has no usable last segment. */
+export const FALLBACK_URL_FILENAME = 'skill.md';
+
+// ---- Injection scan -------------------------------------------------------
+
+/** System prompt for the classifier; loaded via platform/prompts.ts. */
+export const SAFETY_PROMPT_FILE = 'skill-safety.system.md';
+
+/** Names the json_schema / tool in the structured request. */
+export const SAFETY_SCHEMA_NAME = 'SkillSafetyVerdict';
+
+/**
+ * Providers tried in order. First one with a configured key classifies; none
+ * configured ⇒ the scan returns null and the UI says so.
+ */
+export const SAFETY_PROVIDER_ORDER = ['openai', 'anthropic'] as const;
+
+/** Body prefix sent to the classifier. An injection buried past this is itself a signal. */
+export const SAFETY_MAX_BODY_CHARS = 24_000;
+
+/** The verdict is a summary plus a few short quotes — it needs no more room. */
+export const SAFETY_MAX_TOKENS = 1200;
+
+/** The scan runs inline on a preview request; a slow provider must not hang it. */
+export const SAFETY_TIMEOUT_MS = 30_000;

@@ -125,6 +125,19 @@ export function useImportSkillPreview() {
   });
 }
 
+/**
+ * Preview a skill fetched from a URL. Same no-write guarantee as the file
+ * import — the server GETs the URL behind its SSRF guard, parses it with the
+ * same extractor and returns the same shape, storing nothing. Saving is a
+ * separate useCreateSkill() call, so there is no cache to invalidate here.
+ */
+export function useImportSkillFromUrl() {
+  return useMutation({
+    mutationFn: (url: string) =>
+      api.post<SkillImportPreview>("/skills/import/url", { url: url.trim() }),
+  });
+}
+
 // ---- agent ⇄ skill links (served by the agents module) --------------------
 
 export function useAgentSkills(agentId: string | null | undefined) {
