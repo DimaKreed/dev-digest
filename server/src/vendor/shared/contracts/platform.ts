@@ -71,10 +71,14 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
   },
   {
     id: 'conventions',
+    // Cheap by design: extraction is one call over a dozen sampled files, and
+    // every rule it proposes is verified against the real code afterwards, so
+    // model precision matters far less here than it does for a review. Matches
+    // `onboarding`, the other whole-repo scan, and the seeded workspace default.
     label: 'Conventions',
     description: 'Extracts coding conventions from the repo.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-5.4',
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
 ];
 

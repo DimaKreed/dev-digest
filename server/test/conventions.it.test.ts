@@ -203,10 +203,12 @@ d('conventions module', () => {
       overrides: {
         git: new MockGitClient({ files: FILES }),
         repoIntel: new FakeRepoIntel(samples),
+        // Keyed by the provider the service actually resolves: the registry
+        // default for `conventions` is openrouter, not openai.
         llm: {
-          openai:
+          openrouter:
             llm ??
-            new MockLLMProvider('openai', {
+            new MockLLMProvider('openrouter', {
               structuredBySchema: { ConventionExtraction: EXTRACTION },
             }),
         },
@@ -215,7 +217,7 @@ d('conventions module', () => {
   }
 
   it('extract keeps only code-verified rules and reports every drop', async () => {
-    const llm = new MockLLMProvider('openai', {
+    const llm = new MockLLMProvider('openrouter', {
       structuredBySchema: { ConventionExtraction: EXTRACTION },
     });
     const app = await makeApp(SAMPLES, llm);
@@ -254,8 +256,9 @@ d('conventions module', () => {
       dropped_no_file: 2,
       dropped_no_snippet: 2,
       dropped_single_occurrence: 3,
-      provider: 'openai',
-      model: 'gpt-5.4',
+      // The registry default for `conventions` with no workspace override.
+      provider: 'openrouter',
+      model: 'deepseek/deepseek-v4-flash',
       cost_usd: 0.001,
     });
     await app.close();
