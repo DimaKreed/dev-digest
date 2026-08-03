@@ -6,7 +6,7 @@ import { Badge, Button, FormField, Icon, SelectInput, TextInput, Textarea, Toggl
 import type { Skill, SkillType } from "@devdigest/shared";
 import { useUpdateSkill } from "../../../../../../lib/hooks/skills";
 import { useToast } from "../../../../../../lib/toast";
-import { SKILL_TYPES } from "../../../CreateSkillModal/constants";
+import { SKILL_TYPES } from "../../../../../../lib/skill-types";
 import { s } from "./styles";
 
 /** Config tab — name / description / type / markdown body + enabled toggle. */

@@ -1,8 +1,5 @@
-import type { SkillType } from "@devdigest/shared";
+import { DEFAULT_SKILL_TYPE, SKILL_TYPES } from "@/lib/skill-types";
 
 export const MODAL_WIDTH = 640;
 
-/** Mirrors the `SkillType` enum in @devdigest/shared. */
-export const SKILL_TYPES: readonly SkillType[] = ["rubric", "convention", "security", "custom"];
-
-export const DEFAULT_TYPE: SkillType = "custom";
+export { DEFAULT_SKILL_TYPE as DEFAULT_TYPE, SKILL_TYPES };

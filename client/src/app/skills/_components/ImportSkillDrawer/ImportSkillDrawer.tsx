@@ -20,14 +20,9 @@ import {
 } from "../../../../lib/hooks/skills";
 import { useToast } from "../../../../lib/toast";
 import { ApiError } from "../../../../lib/api";
+import { SKILL_TYPES } from "../../../../lib/skill-types";
 import { SafetyVerdict } from "./_components/SafetyVerdict";
-import {
-  ACCEPTED_EXTENSIONS,
-  DRAWER_WIDTH,
-  IMPORT_TABS,
-  SKILL_TYPES,
-  type ImportTab,
-} from "./constants";
+import { ACCEPTED_EXTENSIONS, DRAWER_WIDTH, IMPORT_TABS, type ImportTab } from "./constants";
 import { s } from "./styles";
 
 /**
