@@ -63,6 +63,34 @@ _2026-07-30_
 
 ## Tool & Library Notes
 
+### A skill in `.claude/skills/` can confidently describe a codebase this repo does not have
+**Symptom:** `react-best-practices/SKILL.md` told agents to use "the project's
+`useApiQuery`/`useApiMutation` core hooks" and to style with Tailwind utility classes, preferring
+`components/ui/`. None of that exists here: data access is `src/lib/hooks/*` over
+`src/lib/api.ts`, `client/` has **zero** Tailwind utility classes (538 inline `style={}` vs 58
+`className`, and every `className` is one of `mono`/`tnum`/`skeleton`/`dd-md`), and the design
+system is the `@devdigest/ui` barrel. Worse, that skill is *absent* from `skills-lock.json`, so
+"hand-authored" cannot be inferred from the lock file — it was copied in and never reconciled.
+**Rule:** before following a skill's concrete claims, grep for the symbols and folders it names.
+Fix it in place when it is not hash-locked; add a "this repo does X instead" note when it is.
+Frontend structure claims now belong to `.claude/skills/frontend-ui-architecture/`, which is
+grounded in verified invariants — `fetch(` appears exactly once in the client
+(`client/src/lib/api.ts:24`), zero deep imports past the `@devdigest/ui` barrel, zero non-type
+imports from `@devdigest/shared`, zero hex literals in any `styles.ts`, zero `"use client"` in
+`client/src/vendor/ui/`.
+_2026-08-01_
+
+### `skills-lock.json` is not the skill inventory — it is stale in both directions
+**Symptom:** it locks `architecture-patterns` and `github-workflow-automation`, neither of which
+has a directory on disk, while `engineering-insights`, `react-best-practices`,
+`react-testing-library`, `security` and `mermaid-diagram` appear nowhere in it.
+**Rule:** treat `skills-lock.json` as provenance for *vendored* skills only (source repo +
+`computedHash`) — never as the answer to "what skills exist". For that, list
+`.claude/skills/*/SKILL.md`, and keep the catalog table in `.claude/skills/README.md` in sync:
+adding a skill means adding a row there too. That table is edited concurrently by parallel
+sessions, so re-read it immediately before editing.
+_2026-08-01_
+
 ## Recurring Errors & Fixes
 
 ## Session Notes

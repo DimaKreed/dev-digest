@@ -29,7 +29,9 @@ nothing to build and no dist to keep in sync.
 
 - **Purity contract: no DB, no GitHub, no filesystem, no env reads.** The only side effect
   is the injected `LLMProvider`. Adding an import that breaks this is the one change to
-  push back on — put the I/O in a `server/src/adapters/` port instead.
+  push back on — put the I/O in a `server/src/adapters/` port instead. This is rule **C5** of
+  [onion-architecture](../.claude/skills/onion-architecture/SKILL.md); `src/llm/openrouter.ts`
+  is the one file that already violates it.
 - `INJECTION_GUARD` is appended to every system prompt. There is deliberately **no**
   keyword scanning of diff content; don't add heuristic filtering.
 - Grounding is a mandatory gate — ungrounded findings are dropped silently, by design.

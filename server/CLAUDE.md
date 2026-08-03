@@ -14,6 +14,8 @@ pnpm test                                         # everything
 pnpm exec vitest run --exclude '**/*.it.test.ts'  # unit lane (CI)
 pnpm exec vitest run .it.test                     # integration lane (needs Docker)
 pnpm typecheck
+pnpm arch                                         # onion boundary check; 0 unless NEW violation
+pnpm arch:all                                     # + the 27 baselined known violations
 pnpm db:generate                                  # drizzle-kit → src/db/migrations
 pnpm db:migrate                                   # apply; NOT automatic on boot
 pnpm db:seed                                      # idempotent demo data
@@ -37,6 +39,13 @@ even if `package.json` drifts locally.
   [src/platform/container.ts](src/platform/container.ts), and is swapped for
   [src/adapters/mocks.ts](src/adapters/mocks.ts) in hermetic tests. Never import
   octokit / openai / simple-git from a module.
+- **Onion layering** is defined in
+  [.claude/skills/onion-architecture/SKILL.md](../.claude/skills/onion-architecture/SKILL.md) —
+  rings, repository ports, narrow DI, transaction boundaries. Read it before adding a route,
+  service or repository. `pnpm arch` enforces the import-direction subset via
+  [.dependency-cruiser.cjs](.dependency-cruiser.cjs); it is an architecture check, **not** a
+  linter (this repo still has no ESLint/Biome/Prettier) and adds no dependency —
+  `dependency-cruiser` was already here for `adapters/depgraph`.
 - Modules are registered **statically** in [src/modules/index.ts](src/modules/index.ts)
   (not autoloaded by filename) — a new module isn't live until it's listed there.
 - Plugins register **before** modules in [src/app.ts](src/app.ts).

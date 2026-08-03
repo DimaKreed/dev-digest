@@ -24,7 +24,29 @@ are no runs to show. Trigger one: `POST /pulls/:id/review {"agentId":…}` is fi
 on mock adapters (they report `costUsd`) and already reads the `agent_runs` row back.
 _2026-07-30_
 
+### Declaring Drizzle row types in `repository.ts` creates a pure-helper → repository import cycle
+**Symptom:** `pnpm arch:all` reports
+`no-circular: src/modules/agents/helpers.ts → src/modules/agents/repository.ts → src/modules/agents/helpers.ts`.
+The helper is meant to be pure and only wants a type —
+`import type { AgentRow, AgentVersionRow } from './repository.js'` — while `repository.ts` imports
+the helper's mappers back.
+**Rule:** put row/domain types in `modules/<domain>/ports.ts`, not in the repository that also holds
+the query code. Both files then depend inward and the cycle disappears. `src/modules/agents/helpers.ts:3`
+_2026-08-01_
+
 ## Tool & Library Notes
+
+### A dependency-cruiser rule cannot see a type that arrives through the `Container` God object
+**Symptom:** `h8-no-db-handle-above-repository` in `.dependency-cruiser.cjs` reports 0 hits even
+though every service is typed against the Drizzle handle — because no service imports
+`db/client.js`. `Db` arrives as `Container['db']`, and `platform/container.ts` is the only file with
+the import edge.
+**Rule:** depcruise validates *import edges*, so any rule about a type flowing through one injected
+object is structurally blind and will pass while the violation is everywhere. Enforce those with
+grep — `rg -n '\$inferSelect|PostgresJsDatabase|db/rows' src/modules/*/service.ts`. Keep the
+depcruise rule anyway; it catches the day someone imports the handle directly.
+`src/modules/reviews/service.ts:33`
+_2026-08-01_
 
 ## Recurring Errors & Fixes
 

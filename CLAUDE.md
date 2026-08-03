@@ -47,7 +47,10 @@ Per-package commands live in each module's CLAUDE.md.
 ## Conventions
 
 - **No lint/format tooling exists** repo-wide — no ESLint, Biome or Prettier, and no
-  `lint` script. Don't invent one or add a formatter unasked.
+  `lint` script. Don't invent one or add a formatter unasked. The one exception is
+  `server/`'s `pnpm arch` — an *architecture* boundary check (import direction only) over the
+  already-present `dependency-cruiser`, owned by the `onion-architecture` skill. It is not a
+  linter; don't remove it as one.
 - `strict` + `noUncheckedIndexedAccess` everywhere: indexing an array yields `T | undefined`.
 - Output vocabulary is fixed by contract: severity `CRITICAL | WARNING | SUGGESTION`,
   verdict `request_changes | approve | comment`.
@@ -68,3 +71,5 @@ memory, skills, compose) are **intentional scaffolding, not dead code**. Never c
   sections. Module-specific findings go in that module's `insights.md`.
 - [.claude/skills/engineering-insights/SKILL.md](.claude/skills/engineering-insights/SKILL.md)
   — routing, quality bar and entry format for the files above
+- [.claude/skills/onion-architecture/SKILL.md](.claude/skills/onion-architecture/SKILL.md)
+  — ring model and layering rules for `server/` + `reviewer-core/`, enforced by `pnpm arch`

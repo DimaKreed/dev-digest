@@ -108,16 +108,19 @@ New arrays, objects, and functions created inline in JSX props break `React.memo
 ## Data Fetching (HIGH)
 
 - ALL data fetching in custom hooks, never in component bodies
-- Use the project's `useApiQuery`/`useApiMutation` core hooks
+- Route every server call through a hook in `client/src/lib/hooks/` built on `client/src/lib/api.ts`
 - Handle loading, error, and empty states in the container component
 - Use try-catch in async functions within hooks
 
-## Tailwind CSS (MEDIUM)
+## Styling (MEDIUM)
 
-- Use utility classes for all styling — no inline `style={}` objects
-- Use responsive prefixes (`sm:`, `md:`, `lg:`) for responsive design
-- Extract repeated class combinations into reusable components (Button, Card, Badge)
-- Prefer the project's `components/ui/` over recreating common elements
+This client does **not** use Tailwind utility classes. Styling is inline `style={}` objects
+reading CSS custom properties from a colocated `styles.ts`; Tailwind 4 is installed only for its
+preflight and the `@theme inline` token bridge. See `frontend-ui-architecture`.
+
+- Colours come from `var(--token)` — never a hex literal
+- Extract repeated visuals into a component, not into a class string
+- Prefer the `@devdigest/ui` barrel over recreating common elements — there is no `components/ui/`
 
 ## Error Boundaries (HIGH)
 
@@ -166,9 +169,9 @@ New arrays, objects, and functions created inline in JSX props break `React.memo
 
 ## Code Organization (MEDIUM)
 
-### Feature-Based Structure
-- Colocate component + hook + helpers + tests per feature
-- Shared utilities go in `utils/` or `components/ui/`
+File and folder placement is owned by the `frontend-ui-architecture` skill — which folder a
+component goes in, when to promote it to a shared one, where constants, helpers and business
+logic live, and what may import what. Use that skill instead of deciding here.
 
 ### File Quality
 - Order: imports, constants, helpers, component, exports

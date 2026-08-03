@@ -102,3 +102,4 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
 | `08-pr-severity-filter` | PR #482 → Agent runs tab → severity counter chips drive `?severity` and narrow the findings |
 | `09-pr-list-findings` | PR list → FINDINGS chip on PR #482 → detail page opens pre-filtered to that severity |
+| `10-finding-to-diff` | PR #482 → Agent runs → a finding's `file:line` → Files changed at that file/line |

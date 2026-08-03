@@ -1,0 +1,18 @@
+{
+  "name": "A finding's file reference opens the app's own diff at that file",
+  "description": "From PR #482's Agent runs tab, click the file:line reference on the seeded CRITICAL finding ('src/config.ts:11') and confirm it switches to Files changed with ?file= and ?line= in the URL and the file rendered. This is the in-app counterpart of the GitHub link that used to sit there — the ↗ icon beside it still goes to GitHub. Unlike the hover peek panels, this path is fully scriptable: the finding card on the PR detail page is open by default (FindingsTab passes defaultOpen to the newest run), so the reference is clickable without a hover. Read-only seeded data (no model call). Assumes a freshly-seeded DB where acme/payments-api (PR #482) is the first repo — run locally via the hermetic stack (see e2e/README.md).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the PR row" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Agent runs"], "label": "switch to the Agent runs tab" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the seeded finding card is open" },
+    { "cmd": ["find", "text", "src/config.ts:11", "click"], "label": "click the finding's file reference" },
+    { "cmd": ["wait", "--url", "tab=diff"], "label": "it switched to Files changed" },
+    { "cmd": ["wait", "--url", "file=src%2Fconfig.ts"], "label": "the target file is in the URL" },
+    { "cmd": ["wait", "--url", "line=11"], "label": "the target line is in the URL" },
+    { "cmd": ["wait", "--text", "src/config.ts"], "label": "the file card is rendered in the diff" }
+  ]
+}

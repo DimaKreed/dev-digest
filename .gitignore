@@ -23,3 +23,8 @@ test-results/
 
 # emdash worktree config (local)
 .emdash.json
+
+# Personal Claude Code overrides. Ignored deliberately: untracked files are part of the
+# pr-self-review fingerprint, so a stray settings file would make the gate's own configuration
+# part of what the gate reviews. See .claude/hooks/README.md.
+.claude/settings.local.json
