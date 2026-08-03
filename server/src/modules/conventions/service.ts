@@ -22,11 +22,13 @@ import {
   CONFIG_FILES,
   buildSamplePayload,
   buildSkillDraft,
+  sliceLines,
   toDto,
   verifyEvidence,
   type SampleFile,
 } from './helpers.js';
 import {
+  MAX_SNIPPET_LINES,
   MIN_DISTINCT_FILES,
   PLUGIN_FORMAT_VERSION,
   REPO_MAP_TOKEN_BUDGET,
@@ -161,17 +163,24 @@ export class ConventionsService {
           droppedNoFile += 1; // cited a path we never sampled — hallucinated file
           continue;
         }
-        const match = verifyEvidence(evidence.snippet, text);
+        const match = verifyEvidence(evidence.anchor, text);
         if (!match.ok) {
-          droppedNoSnippet += 1; // file is real, the quote is not in it
+          droppedNoSnippet += 1; // file is real, the anchor line is not in it
           continue;
         }
+        // The anchor fixes the POSITION; the model's range only suggests a
+        // LENGTH, clamped. So a wrong end_line can shorten or lengthen the
+        // excerpt but can never point it at code the model never cited.
+        const span = Math.min(
+          Math.max(evidence.end_line - evidence.start_line + 1, 1),
+          MAX_SNIPPET_LINES,
+        );
+        const snippet = sliceLines(text, match.startLine, span);
         verified.push({
           path: evidence.path,
-          snippet: evidence.snippet,
-          // The model's `start_line` is discarded — these come from the match.
+          snippet,
           startLine: match.startLine,
-          endLine: match.endLine,
+          endLine: match.startLine + snippet.split('\n').length - 1,
         });
       }
 

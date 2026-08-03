@@ -67,21 +67,25 @@ const HONEST_RULE =
 const EXTRACTION = {
   candidates: [
     {
-      // Verifiable in BOTH files. Note start_line 99 — the server must ignore it.
+      // Verifiable in BOTH files. The users.ts range says lines 99-100, which is
+      // nonsense — the server must take the POSITION from the verified anchor
+      // (line 4) and only the LENGTH (2) from the model.
       rule: HONEST_RULE,
       category: 'structure',
-      rationale: 'Every handler opens with the same tenancy resolution.',
       confidence: 0.92,
       evidence: [
         {
           path: 'src/api/users.ts',
-          snippet: 'const { workspaceId } = await getContext(container, req);',
+          anchor: 'const { workspaceId } = await getContext(container, req);',
           start_line: 99,
+          end_line: 100,
         },
         {
           path: 'src/api/orders.ts',
-          snippet: '  const { workspaceId } = await getContext(container, req);',
-          start_line: 1,
+          // Indented differently from the file — normalisation must absorb it.
+          anchor: '  const { workspaceId } = await getContext(container, req);',
+          start_line: 4,
+          end_line: 4,
         },
       ],
     },
@@ -89,37 +93,60 @@ const EXTRACTION = {
       // Both paths are invented → 2 × dropped_no_file, then no distinct files.
       rule: 'Every module re-exports its public surface from an index barrel file.',
       category: 'imports',
-      rationale: 'Cited from files that were never sampled.',
       confidence: 0.7,
       evidence: [
-        { path: 'src/does-not-exist.ts', snippet: "export * from './thing';", start_line: 1 },
-        { path: 'src/also-missing.ts', snippet: "export * from './other';", start_line: 2 },
+        {
+          path: 'src/does-not-exist.ts',
+          anchor: "export * from './thing';",
+          start_line: 1,
+          end_line: 1,
+        },
+        {
+          path: 'src/also-missing.ts',
+          anchor: "export * from './other';",
+          start_line: 2,
+          end_line: 2,
+        },
       ],
     },
     {
-      // Real files, invented quotes → 2 × dropped_no_snippet.
+      // Real files, invented anchors → 2 × dropped_no_snippet.
       rule: 'Services log a structured event before every outbound network call.',
       category: 'logging',
-      rationale: 'The quotes are not in the files they name.',
       confidence: 0.6,
       evidence: [
-        { path: 'src/api/users.ts', snippet: 'logger.info({ event: "outbound" });', start_line: 3 },
-        { path: 'src/api/orders.ts', snippet: 'logger.info({ event: "outbound" });', start_line: 3 },
+        {
+          path: 'src/api/users.ts',
+          anchor: 'logger.info({ event: "outbound" });',
+          start_line: 3,
+          end_line: 3,
+        },
+        {
+          path: 'src/api/orders.ts',
+          anchor: 'logger.info({ event: "outbound" });',
+          start_line: 3,
+          end_line: 3,
+        },
       ],
     },
     {
-      // Both quotes verify, but in ONE file → dropped_single_occurrence.
+      // Both anchors verify, but in ONE file → dropped_single_occurrence.
       rule: 'Handlers return the repository result directly without an intermediate variable.',
       category: 'api-design',
-      rationale: 'A pattern seen in a single file is a coincidence.',
       confidence: 0.55,
       evidence: [
         {
           path: 'src/api/users.ts',
-          snippet: "import { getContext } from '../shared/context';",
+          anchor: "import { getContext } from '../shared/context';",
           start_line: 1,
+          end_line: 1,
         },
-        { path: 'src/api/users.ts', snippet: 'return repo.list(workspaceId);', start_line: 5 },
+        {
+          path: 'src/api/users.ts',
+          anchor: 'return repo.list(workspaceId);',
+          start_line: 5,
+          end_line: 5,
+        },
       ],
     },
   ],
@@ -244,9 +271,15 @@ d('conventions module', () => {
     expect(c.occurrences).toBe(2);
     expect(c.evidence_files).toEqual(SAMPLES);
     expect(c.evidence_path).toBe('src/api/users.ts');
-    // start_line 99 was the model's claim; line 4 is where the snippet really is.
+    // The model claimed lines 99-100. Position comes from the verified anchor
+    // (line 4); only the 2-line LENGTH survives from the model, so 4-5.
     expect(c.evidence_start_line).toBe(4);
-    expect(c.evidence_end_line).toBe(4);
+    expect(c.evidence_end_line).toBe(5);
+    // And the snippet is sliced out of the real file, not echoed back from the
+    // model — line 5 was never quoted by it.
+    expect(c.evidence_snippet).toBe(
+      '  const { workspaceId } = await getContext(container, req);\n  return repo.list(workspaceId);',
+    );
 
     expect(body.stats).toMatchObject({
       sampled_files: 2,
@@ -323,7 +356,7 @@ d('conventions module', () => {
     const draft = res.json();
     expect(draft).toMatchObject({ name: 'conventions-probe-conventions', type: 'convention' });
     expect(draft.body).toContain(HONEST_RULE);
-    expect(draft.body).toContain('`src/api/users.ts:4`');
+    expect(draft.body).toContain('`src/api/users.ts:4-5`');
     expect(draft.evidence_files).toEqual(SAMPLES);
     await app.close();
   });
@@ -369,7 +402,8 @@ d('conventions module', () => {
       {
         rule: HONEST_RULE,
         evidence_path: 'src/api/users.ts',
-        evidence_snippet: 'const { workspaceId } = await getContext(container, req);',
+        evidence_snippet:
+          '  const { workspaceId } = await getContext(container, req);\n  return repo.list(workspaceId);',
         confidence: 0.92,
         accepted: true,
       },

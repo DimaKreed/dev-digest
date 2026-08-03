@@ -51,9 +51,21 @@ Use exactly one of: `naming`, `error-handling`, `async`, `imports`, `structure`,
 
 - `rule` — 10 to 240 characters, one sentence, imperative.
 - `category` — one value from the fixed list above.
-- `rationale` — up to 300 characters: why this is the team's pattern, grounded in what you saw.
 - `confidence` — 0..1. How sure you are this is intentional and consistent, not a coincidence.
-- `evidence` — 2 to 4 items of `{path, snippet, start_line}`, spanning ≥2 distinct paths.
+- `evidence` — 2 to 4 items of `{path, anchor, start_line, end_line}`, spanning ≥2 distinct paths.
+
+### Evidence
+
+Do NOT quote blocks of code. For each occurrence give:
+
+- `anchor` — the ONE most distinctive line showing the pattern, copied **exactly** as it appears
+  in the file, including its indentation. One line only.
+- `start_line` / `end_line` — the range worth displaying around it.
+
+The anchor is checked against the real file. If it is not there, that occurrence is discarded,
+and a rule left with fewer than two surviving occurrences is discarded whole. Do not reconstruct
+a line from memory or tidy it up — copy it. The server reads the surrounding code itself, so you
+never need to reproduce more than the anchor.
 
 Prefer 5–12 strong, well-evidenced rules over a long list of weak ones. Emitting nothing is a
 valid answer when the sample shows no consistent house pattern.

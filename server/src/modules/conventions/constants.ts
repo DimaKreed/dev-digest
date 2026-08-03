@@ -16,8 +16,22 @@ export const REPO_MAP_TOKEN_BUDGET = 2000;
  */
 export const MIN_DISTINCT_FILES = 2;
 
-/** Hard ceiling on how many candidates the model may propose in one scan. */
-export const MAX_CANDIDATES = 20;
+/**
+ * Hard ceiling on how many candidates the model may propose in one scan.
+ *
+ * Every candidate costs output tokens, and output is generated serially — this
+ * number is close to a direct multiplier on how long a scan takes. The prompt
+ * asks for 5–12 strong rules and the >=2-file gate discards most of the rest,
+ * so a ceiling far above that only buys latency.
+ */
+export const MAX_CANDIDATES = 10;
+
+/**
+ * Longest snippet the server will slice out around a verified anchor line.
+ * The model's own line range only chooses a length within this bound; it can
+ * never choose the position.
+ */
+export const MAX_SNIPPET_LINES = 12;
 
 // ---- Sample payload budget -------------------------------------------------
 // Truncation is always TAIL-only, never head or middle, so the 1-based line

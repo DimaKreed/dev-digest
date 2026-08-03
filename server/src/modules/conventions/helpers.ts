@@ -182,6 +182,23 @@ export function verifyEvidence(snippet: string, fileText: string): EvidenceMatch
   return { ok: false, reason: 'snippet_not_found' };
 }
 
+/**
+ * `count` lines of `text` starting at 1-based `startLine`.
+ *
+ * This is how a displayed snippet is produced: the model supplies an anchor
+ * line, `verifyEvidence` proves where that line really is, and the snippet is
+ * cut from the file around it. So the code shown in the UI comes from disk and
+ * cannot be something the model invented.
+ *
+ * Runs short at EOF rather than padding, and returns '' for a start past the
+ * end — a caller asking for line 900 of a 40-line file gets nothing, not blanks.
+ */
+export function sliceLines(text: string, startLine: number, count: number): string {
+  if (startLine < 1 || count < 1) return '';
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  return lines.slice(startLine - 1, startLine - 1 + count).join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // DTO mapping
 // ---------------------------------------------------------------------------

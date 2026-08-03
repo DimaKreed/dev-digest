@@ -3,6 +3,7 @@ import type { ConventionCandidate } from '@devdigest/shared';
 import {
   buildSamplePayload,
   buildSkillDraft,
+  sliceLines,
   slugify,
   verifyEvidence,
 } from '../src/modules/conventions/helpers.js';
@@ -177,6 +178,33 @@ describe('buildSkillDraft', () => {
       candidate({ evidence_start_line: 23, evidence_end_line: 31, occurrences: 3 }),
     ]);
     expect(draft.body).toContain('Seen in 3 files, e.g. `src/api/users.ts:23-31`:');
+  });
+});
+
+describe('sliceLines', () => {
+  const FILE = ['one', 'two', 'three', 'four'].join('\n');
+
+  it('takes `count` lines from a 1-based start', () => {
+    expect(sliceLines(FILE, 2, 2)).toBe('two\nthree');
+  });
+
+  it('runs short at EOF instead of padding', () => {
+    expect(sliceLines(FILE, 4, 10)).toBe('four');
+  });
+
+  it('returns nothing for a start past the end', () => {
+    // A model claiming line 900 of a 4-line file must yield an empty snippet,
+    // never a run of blank lines that looks like real but empty code.
+    expect(sliceLines(FILE, 900, 3)).toBe('');
+  });
+
+  it('rejects a non-positive start or count', () => {
+    expect(sliceLines(FILE, 0, 2)).toBe('');
+    expect(sliceLines(FILE, 1, 0)).toBe('');
+  });
+
+  it('normalises CRLF so line counts match verifyEvidence', () => {
+    expect(sliceLines('a\r\nb\r\nc', 2, 2)).toBe('b\nc');
   });
 });
 

@@ -31,6 +31,13 @@ export const EXTRACTION_SCHEMA_NAME = 'ConventionExtraction';
  * `evidence.min(2)` is the load-bearing part: a rule the model cannot cite in
  * two places is not a house convention, and the server enforces the same floor
  * again on the VERIFIED evidence (`MIN_DISTINCT_FILES`).
+ *
+ * Evidence is an ANCHOR LINE, not a quoted block. A model writes its answer one
+ * token at a time, so making it retype code we already have on disk was the
+ * single largest cost in a scan (~7k output tokens ⇒ ~2 minutes). One line is
+ * enough to prove it read the file — the anchor is still matched against the
+ * real source, and a rule whose anchor cannot be found is discarded — while the
+ * server reads the surrounding lines itself.
  */
 export const ConventionExtraction = z.object({
   candidates: z
@@ -38,14 +45,15 @@ export const ConventionExtraction = z.object({
       z.object({
         rule: z.string().min(10).max(240),
         category: ConventionCategory,
-        rationale: z.string().max(300),
         confidence: z.number().min(0).max(1),
         evidence: z
           .array(
             z.object({
               path: z.string(),
-              snippet: z.string(),
+              /** ONE distinctive line, copied verbatim. Verified. */
+              anchor: z.string().min(3).max(200),
               start_line: z.number().int().positive(),
+              end_line: z.number().int().positive(),
             }),
           )
           .min(2)
