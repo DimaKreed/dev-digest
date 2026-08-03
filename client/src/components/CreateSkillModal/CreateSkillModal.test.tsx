@@ -81,8 +81,24 @@ describe("CreateSkillModal without `initial` (the /skills behaviour)", () => {
       description: "",
       type: "custom",
       body: "# Body",
+      // The modal now owns the Enabled toggle (it is in the design), so a
+      // from-scratch skill states its own default rather than leaving the
+      // server to infer one. New on purpose, not an accident.
+      enabled: true,
       note: "Initial version",
     });
+  });
+
+  it("sends enabled:false when the toggle is switched off", async () => {
+    const fetchMock = mockCreate();
+    renderModal({});
+
+    fireEvent.change(nameBox(), { target: { value: "my-skill" } });
+    fireEvent.change(bodyBox(), { target: { value: "# Body" } });
+    fireEvent.click(screen.getByRole("switch"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sentBody(fetchMock)).toMatchObject({ enabled: false }));
   });
 });
 

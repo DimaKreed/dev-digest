@@ -6,9 +6,10 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Button, Modal, FormField, TextInput, SelectInput, Textarea } from "@devdigest/ui";
+import { Button, Modal, FormField, Icon, TextInput, SelectInput, Toggle } from "@devdigest/ui";
 import type { Skill, SkillSource, SkillType } from "@devdigest/shared";
 import { useCreateSkill, type CreateSkillInput } from "@/lib/hooks/skills";
+import { BodyEditor } from "./_components/BodyEditor";
 import { DEFAULT_TYPE, MODAL_WIDTH, SKILL_TYPES } from "./constants";
 import { s } from "./styles";
 
@@ -30,6 +31,8 @@ export function CreateSkillModal({
   title,
   subtitle,
   banner,
+  submitLabel,
+  footerNote,
 }: {
   onClose: () => void;
   onCreated: (skill: Skill) => void;
@@ -41,6 +44,10 @@ export function CreateSkillModal({
   subtitle?: React.ReactNode;
   /** Info strip above the form — the caller owns its namespace and wording. */
   banner?: React.ReactNode;
+  /** Submit button text. Defaults to the from-scratch "Save". */
+  submitLabel?: React.ReactNode;
+  /** Muted line on the left of the footer, e.g. "Saved as v1". */
+  footerNote?: React.ReactNode;
 }) {
   const t = useTranslations("skills");
   const create = useCreateSkill();
@@ -48,6 +55,7 @@ export function CreateSkillModal({
   const [description, setDescription] = React.useState(initial?.description ?? "");
   const [type, setType] = React.useState<SkillType>(initial?.type ?? DEFAULT_TYPE);
   const [body, setBody] = React.useState(initial?.body ?? "");
+  const [enabled, setEnabled] = React.useState(true);
 
   const typeOptions = SKILL_TYPES.map((v) => ({ value: v, label: t(`listItem.type.${v}`) }));
   const canSubmit = name.trim().length > 0 && body.trim().length > 0 && !create.isPending;
@@ -60,6 +68,7 @@ export function CreateSkillModal({
       description: description.trim(),
       type,
       body,
+      enabled,
       note: "Initial version",
       ...(source ? { source } : {}),
       ...(initial?.evidenceFiles ? { evidence_files: initial.evidenceFiles } : {}),
@@ -72,15 +81,28 @@ export function CreateSkillModal({
     <Modal
       width={MODAL_WIDTH}
       title={title ?? t("editor.createFromScratch")}
-      subtitle={subtitle ?? t("config.descriptionHint")}
+      // With a draft prefilled the name is the useful subheading; the old
+      // default repeated the Description field's own hint verbatim.
+      subtitle={subtitle ?? (initial ? initial.name : t("config.descriptionHint"))}
       onClose={onClose}
       footer={
         <div style={s.footer}>
+          {footerNote && (
+            <span style={s.footerNote}>
+              <Icon.GitBranch size={12} />
+              {footerNote}
+            </span>
+          )}
           <Button kind="ghost" onClick={onClose}>
             {t("import.cancel")}
           </Button>
-          <Button kind="primary" icon="Plus" onClick={submit} disabled={!canSubmit}>
-            {create.isPending ? t("config.saving") : t("config.save")}
+          <Button
+            kind="primary"
+            icon={initial ? "Sparkles" : "Plus"}
+            onClick={submit}
+            disabled={!canSubmit}
+          >
+            {create.isPending ? t("config.saving") : (submitLabel ?? t("config.save"))}
           </Button>
         </div>
       }
@@ -93,16 +115,27 @@ export function CreateSkillModal({
         <FormField label={t("config.description")} hint={t("config.descriptionHint")}>
           <TextInput value={description} onChange={setDescription} />
         </FormField>
-        <FormField label={t("config.type")}>
-          <SelectInput value={type} onChange={(v) => setType(v as SkillType)} options={typeOptions} />
-        </FormField>
+        <div style={s.row}>
+          <FormField label={t("config.type")}>
+            <SelectInput
+              value={type}
+              onChange={(v) => setType(v as SkillType)}
+              options={typeOptions}
+            />
+          </FormField>
+          <FormField label={t("config.enabled")} hint={t("config.enabledHint")}>
+            <Toggle on={enabled} onChange={setEnabled} />
+          </FormField>
+        </div>
         <FormField label={t("config.body")} hint={t("config.bodyHint")} required>
-          <Textarea
+          <BodyEditor
             value={body}
             onChange={setBody}
-            rows={10}
-            mono
+            fileName={`${name || "skill"}.md`}
+            dirty={body !== (initial?.body ?? "")}
             placeholder={t("config.bodyPlaceholder")}
+            unsavedLabel={t("config.unsaved")}
+            tokensLabel={(count) => t("config.tokensEstimate", { count })}
           />
         </FormField>
       </div>

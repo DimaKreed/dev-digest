@@ -262,6 +262,8 @@ export function ConventionsView() {
           source="extracted"
           title={t("modal.title")}
           banner={t("modal.mergedFrom", { count: acceptedIds.length, repo: repoName })}
+          submitLabel={t("modal.submit")}
+          footerNote={t("modal.footerNote")}
           onClose={() => setDraft(null)}
           onCreated={onCreated}
         />

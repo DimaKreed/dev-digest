@@ -138,7 +138,9 @@
     "save": "Save",
     "saving": "Saving…",
     "saved": "Saved (v{version})",
-    "savedToast": "Saved as v{version}"
+    "savedToast": "Saved as v{version}",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "tokensEstimate": "~{count} tokens"
   },
   "previewTab": {
     "title": "Preview",
