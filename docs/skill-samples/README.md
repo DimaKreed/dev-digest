@@ -5,6 +5,7 @@ Importable fixtures for the Skills Lab import flow (`Add Skill → Import from f
 | Sample | Demonstrates |
 |---|---|
 | [`flaky-test-detector/`](./flaky-test-detector/) | A skill packaged as a folder: `SKILL.md` plus a `scripts/detect.sh` that the importer must refuse to read. |
+| [`api-contract/`](./api-contract/) | Four loose `.md` skills for the API Contract Reviewer. Import any one of them directly — no archive needed — to exercise the single-file path. |
 
 ## Building the archive
 
