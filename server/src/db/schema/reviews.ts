@@ -1,29 +1,45 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+  index,
+} from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
 
 // ============================================================ Review & findings
 
-export const reviews = pgTable('reviews', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  prId: uuid('pr_id')
-    .notNull()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  agentId: uuid('agent_id'),
-  /** The agent_run that produced this review (links the timeline run ↔ review). */
-  runId: uuid('run_id'),
-  kind: text('kind', { enum: ['summary', 'review'] }).notNull(),
-  verdict: text('verdict'),
-  summary: text('summary'),
-  score: integer('score'),
-  model: text('model'),
-  createdAt: now(),
-});
+export const reviews = pgTable(
+  'reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    prId: uuid('pr_id')
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    agentId: uuid('agent_id'),
+    /** The agent_run that produced this review (links the timeline run ↔ review). */
+    runId: uuid('run_id'),
+    kind: text('kind', { enum: ['summary', 'review'] }).notNull(),
+    verdict: text('verdict'),
+    summary: text('summary'),
+    score: integer('score'),
+    model: text('model'),
+    createdAt: now(),
+  },
+  // `run_id` is a bare uuid with no FK (run deletion clears reviews by hand in
+  // run.repo.ts). Every per-skill stat joins run_skills → agent_runs → reviews
+  // on it, so without this index each rollup is a seq-scan over all reviews.
+  (t) => ({ runIdx: index('reviews_run_id_idx').on(t.runId) }),
+);
 
 export const findings = pgTable('findings', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -9,6 +9,7 @@ in the DB). The canonical, reviewable copies live next to this file:
 - [`general-reviewer.md`](./general-reviewer.md)
 - [`security-reviewer.md`](./security-reviewer.md)
 - [`performance-reviewer.md`](./performance-reviewer.md)
+- [`test-quality-reviewer.md`](./test-quality-reviewer.md)
 
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the
@@ -38,7 +39,7 @@ delimiter-wrapped (`prompt.ts:104-122`):
 ```
 <task line, e.g. "Review PR #7 '…'">
 ## PR description        (untrusted, author-controlled, truncated to 4000 chars)
-## Skills / rules        (linked skill bodies)
+## Skills / rules        (linked skill bodies, in agent_skills.order)
 ## Relevant memory       (curated memory items)
 ## Repo skeleton         (untrusted, repo-derived)
 ## Project context       (untrusted spec chunks)
@@ -49,6 +50,20 @@ delimiter-wrapped (`prompt.ts:104-122`):
 Sections with no content are omitted. Everything repo- or author-derived is wrapped
 in `<untrusted source="…">…</untrusted>` so the model can tell instructions
 (system) from data (user).
+
+### Why skills live in the USER message
+
+A skill's body is instructions, so the system message looks like the natural home
+for it. It is deliberately not: an **imported** skill is a stranger's text, and the
+system message is where your agent's own authority lives. Keeping skills in the user
+message means a community skill cannot outrank the prompt you wrote, and it stays
+below the injection guard. Skill bodies are *not* `<untrusted>`-wrapped, though — they
+are instructions you chose to attach, just not privileged ones.
+
+The server resolves linked skills in `modules/reviews/run-executor.ts` and passes the
+resolved **bodies** (never slugs) to the engine. Skills whose `enabled` is false are
+filtered out there, so a disabled skill produces no block at all — which is exactly
+what the run trace shows.
 
 ## The output schema is NOT in the prompt
 

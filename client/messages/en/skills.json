@@ -84,7 +84,8 @@
       "manual": "Manual",
       "extracted": "Extracted",
       "community": "Community",
-      "imported_url": "Imported"
+      "imported_url": "Imported",
+      "imported_file": "Imported"
     }
   },
   "preview": {
@@ -97,5 +98,108 @@
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Saving a changed body creates a new immutable version.",
     "version": "v{version}"
+  },
+  "card": {
+    "noDescription": "No description",
+    "usedBy": "{count, plural, =0 {No agents} one {# agent} other {# agents}}",
+    "tokens": "{count} tokens",
+    "deleteTitle": "Delete skill",
+    "deleteConfirm": "Delete skill \"{name}\"? It will be unlinked from every agent. This cannot be undone.",
+    "disableConfirm": "Disable \"{name}\"? A disabled skill never reaches a prompt, so it will be detached from {count, plural, one {# agent} other {# agents}}. Re-enabling does not restore those links.",
+    "disabledToast": "\"{name}\" disabled and detached from {count, plural, one {# agent} other {# agents}}."
+  },
+  "editor": {
+    "createFromScratch": "Create from scratch",
+    "importFromFile": "Import from file",
+    "runOnPr": "Run on a PR…",
+    "disabled": "disabled",
+    "tabs": {
+      "config": "Config",
+      "preview": "Preview",
+      "stats": "Stats",
+      "versions": "Versions"
+    }
+  },
+  "config": {
+    "title": "Configuration",
+    "enabled": "Enabled",
+    "name": "Name",
+    "description": "Description",
+    "descriptionHint": "The description is the skill's interface. Write it directively — when should an agent apply this? It is the first thing the agent reads.",
+    "type": "Type",
+    "body": "Skill body",
+    "bodyHint": "A skill is text only. It runs no code and has no access to tools or files.",
+    "bodyPlaceholder": "# Rule\n\nDescribe when the agent should apply this…",
+    "unsaved": "unsaved",
+    "tokens": "{count} tokens",
+    "noteLabel": "What changed (optional)",
+    "noteHint": "Shown in the version history. Saving a changed body creates a new version.",
+    "notePlaceholder": "Tightened scope rule; cap at 5 high-signal findings",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved (v{version})",
+    "savedToast": "Saved as v{version}"
+  },
+  "previewTab": {
+    "title": "Preview",
+    "subtitle": "Rendered as the reviewing agent receives it.",
+    "empty": "This skill has no body yet."
+  },
+  "stats": {
+    "usedBy": "Used by",
+    "usedByUnit": "agents",
+    "runsPulled": "Runs pulled",
+    "runsPulledUnit": "runs",
+    "acceptRate": "Accept rate",
+    "findings": "Findings (30d)",
+    "noData": "—",
+    "scopeNote": "Counted across runs where this skill was in the prompt. A single finding is not attributed to a single skill — one run concatenates every linked skill into one prompt.",
+    "agentsUsing": "Agents using this skill",
+    "noAgents": "No agent links this skill yet.",
+    "byCategory": "Findings by category",
+    "open": "Open",
+    "empty": {
+      "title": "No runs yet",
+      "body": "Attach this skill to an agent and run a review — these numbers fill in from real runs."
+    },
+    "loadError": "Could not load stats."
+  },
+  "versions": {
+    "title": "Version history",
+    "count": "{count, plural, one {# version} other {# versions}}",
+    "subtitle": "Every save snapshots the body so eval runs stay reproducible against the exact text they scored.",
+    "current": "Current",
+    "noNote": "No description",
+    "diff": "Diff",
+    "restore": "Restore",
+    "restoring": "Restoring…",
+    "restored": "Restored v{version} as v{newVersion}",
+    "restoreConfirm": "Restore the body from v{version}? This creates a new version — history is never rewritten.",
+    "diffTitle": "v{version} compared with the current body",
+    "diffRemoved": "v{version}",
+    "diffAdded": "Current",
+    "identical": "This version is identical to the current body.",
+    "loadError": "Could not load version history."
+  },
+  "import": {
+    "title": "Import a skill",
+    "subtitle": "Upload a Markdown file or a .zip archive",
+    "dropzone": "Drop a .md or .zip here, or click to choose",
+    "choosing": "Reading…",
+    "extracted": "Extracted {file}",
+    "skippedTitle": "{count, plural, one {# file skipped, not stored} other {# files skipped, not stored}}",
+    "skipReason": {
+      "executable": "executable — never read or run",
+      "not_markdown": "not markdown — not read",
+      "unused_markdown": "markdown, but another file was used"
+    },
+    "nameLabel": "Name",
+    "typeLabel": "Type",
+    "trustWarning": "Someone else's skill is someone else's instructions inside your agent's prompt. Read the body before you enable it — imported skills are created disabled.",
+    "cancel": "Cancel",
+    "save": "Save skill",
+    "saving": "Saving…",
+    "saved": "Imported \"{name}\" — disabled until you enable it.",
+    "failed": "Import failed"
   }
 }

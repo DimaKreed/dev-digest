@@ -184,6 +184,23 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // Skills — ordered instruction blocks linked to this agent. `linkedSkills`
+      // already returns them ORDER BY agent_skills.order, which is exactly the
+      // order they appear in the assembled prompt.
+      //
+      // A globally disabled skill is filtered out here, so it never reaches the
+      // prompt and never shows up in the run trace's Skills block. That is the
+      // observable difference the lesson's control experiment turns on.
+      const linkedSkills = (await this.agents.linkedSkills(agent.id)).filter(
+        (l) => l.skill.enabled,
+      );
+      const skillBodies = linkedSkills.map((l) => l.skill.body);
+      runLog.info(
+        linkedSkills.length > 0
+          ? `skills: ${linkedSkills.length} attached (${linkedSkills.map((l) => l.skill.name).join(', ')})`
+          : 'skills: none attached',
+      );
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -196,6 +213,10 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // Resolved skill bodies (NOT slugs) — the engine renders them as the
+        // `## Skills / rules` section. Same omit-when-empty contract as below,
+        // so an agent with no skills produces a byte-identical prompt to before.
+        ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -271,7 +292,15 @@ export class ReviewRunExecutor {
           findings: findingRows.length,
           grounding,
         },
-        prompt_assembly: outcome.assembly,
+        prompt_assembly: {
+          ...outcome.assembly,
+          // What the skills block cost this prompt. Counted here rather than in
+          // the engine because the tokenizer is a server adapter and
+          // reviewer-core is pure.
+          skills_tokens: outcome.assembly.skills
+            ? this.container.tokenizer.count(outcome.assembly.skills)
+            : null,
+        },
         tool_calls: outcome.chunks.map((c) => ({
           tool: 'review_file',
           args: c.label,
@@ -287,6 +316,23 @@ export class ReviewRunExecutor {
       };
       runLog.info('Run complete; trace persisted');
       await this.repo.saveRunTrace(runId, trace);
+      // Which skills were actually in this prompt. Recorded AFTER the run row
+      // is complete (FK target), and only for skills that really made it in —
+      // this is what every per-skill stat is computed over.
+      //
+      // Best-effort ON PURPOSE: this is observability, not the result. The
+      // review and its findings are already persisted and the run is already
+      // 'done', so letting an insert failure fall through to the catch below
+      // would relabel a successful run as 'failed'. The narrow real case is a
+      // skill deleted mid-run — its FK is gone and the insert throws.
+      try {
+        await this.repo.saveRunSkills(
+          runId,
+          linkedSkills.map((l) => l.skill.id),
+        );
+      } catch (err) {
+        runLog.info(`skills: could not record run_skills (${(err as Error).message})`);
+      }
       this.container.runBus.complete(runId);
 
       return { review, findings: findingRows, grounding, raw: outcome.review };
@@ -426,7 +472,14 @@ export class ReviewRunExecutor {
         source: 'local',
       },
       stats: { duration_ms: durationMs, tokens_in: 0, tokens_out: 0, cost_usd: null, findings: 0, grounding },
-      prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
+      prompt_assembly: {
+        system: agent.systemPrompt,
+        skills: null,
+        skills_tokens: null,
+        memory: null,
+        specs: null,
+        user: '',
+      },
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],

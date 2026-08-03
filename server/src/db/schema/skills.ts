@@ -10,8 +10,11 @@ export const skills = pgTable('skills', {
   name: text('name').notNull(),
   description: text('description').notNull(),
   type: text('type', { enum: ['rubric', 'convention', 'security', 'custom'] }).notNull(),
+  // TS-level union only — Drizzle's `enum` option emits no CHECK constraint on
+  // a `text` column, so adding a value here needs no migration. Mirrors
+  // `SkillSource` in vendor/shared/contracts/knowledge.ts.
   source: text('source', {
-    enum: ['manual', 'imported_url', 'extracted', 'community'],
+    enum: ['manual', 'imported_url', 'imported_file', 'extracted', 'community'],
   }).notNull(),
   body: text('body').notNull(),
   enabled: boolean('enabled').notNull().default(true),
@@ -20,6 +23,11 @@ export const skills = pgTable('skills', {
   createdAt: now(),
 });
 
+/**
+ * Immutable body snapshot per version. A saved edit never rewrites history —
+ * "restore" writes a NEW version carrying an older body — so an eval run stays
+ * reproducible against the exact text it scored.
+ */
 export const skillVersions = pgTable(
   'skill_versions',
   {
@@ -28,6 +36,8 @@ export const skillVersions = pgTable(
       .references(() => skills.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     body: text('body').notNull(),
+    /** Optional "what changed" label the author types when saving. */
+    note: text('note'),
     createdAt: now(),
   },
   (t) => ({ pk: primaryKey({ columns: [t.skillId, t.version] }) }),

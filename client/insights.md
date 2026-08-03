@@ -178,6 +178,27 @@ wrapper. (There is also no `/showcase` route — `Gallery` has no other consumer
 container for this reason; `FindingsHoverList` is the one that calls `useTranslations`.
 _2026-07-30_
 
+### `apiFetch` stamps `content-type: application/json` on any non-null body — FormData must be exempted
+**Symptom:** the first multipart endpoint (`POST /skills/import/preview`) would have gone out as
+`application/json` with no boundary, so Fastify's multipart parser rejects the request before the
+handler runs. Nothing in the calling component looks wrong — the header is added by the single
+fetch chokepoint, several files away.
+**Rule:** only the browser can set a multipart content-type, because only it knows the boundary
+token. `src/lib/api.ts:30` now excludes `FormData` from that header; upload via
+`api.upload(path, form)` and never pass a `content-type` alongside FormData.
+_2026-08-03_
+
+### `BarRow` never renders its own `value`, and `Donut` is hard-wired for money
+**Symptom:** a findings-by-category breakdown built with `<BarRow label value max />` drew correct
+bars above an empty number column; switching to the `Donut` the design showed rendered a count of
+52 as `$52.00`.
+**Rule:** `BarRow`'s right-hand column prints `suffix || ""` and ignores `value` entirely
+(`src/vendor/ui/charts/BarRow.tsx:42-44`) — pass `suffix={String(value)}` *as well as* `value`.
+`Donut` defaults `valuePrefix="$"` and formats every legend entry with `.toFixed(2)`
+(`src/vendor/ui/charts/Donut.tsx:15,50`), so it is a cost chart; for integer counts reach for
+`BarRow` instead of fighting it.
+_2026-08-03_
+
 ## Recurring Errors & Fixes
 
 ### `TS2307: Cannot find module '../../../../../../messages/en/prReview.json'` in a new component test

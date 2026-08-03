@@ -1,4 +1,5 @@
 import type { Container } from '../../platform/container.js';
+import { AppError } from '../../platform/errors.js';
 import type {
   Agent,
   AgentSkillLink,
@@ -142,6 +143,25 @@ export class AgentsService {
   }
 
   /**
+   * Reject the whole request if any id is a globally disabled skill.
+   *
+   * Enforced here, not only in the UI: a disabled skill is filtered out of the
+   * prompt, so a link to one is a checkbox that does nothing. Disabling a skill
+   * unlinks it everywhere (skills service), so this and that together keep
+   * "linked ⇒ enabled" true.
+   */
+  private async assertAllEnabled(skillIds: string[]): Promise<void> {
+    const disabled = await this.repo.disabledAmong(skillIds);
+    if (disabled.length > 0) {
+      throw new AppError(
+        'skill_disabled',
+        `Cannot attach a disabled skill: ${disabled.join(', ')}. Enable it first.`,
+        400,
+      );
+    }
+  }
+
+  /**
    * Set / reorder the agent's linked skills. If `skillIds` is provided, replaces
    * the whole set in that order. Returns the resulting ordered links.
    */
@@ -152,6 +172,7 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertAllEnabled(skillIds);
     await this.repo.setSkills(agentId, skillIds);
     return this.skillLinks(agentId);
   }
@@ -165,6 +186,7 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertAllEnabled([skillId]);
     const existing = await this.repo.linkedSkills(agentId);
     const resolvedOrder = order ?? existing.length;
     await this.repo.linkSkill(agentId, skillId, resolvedOrder);

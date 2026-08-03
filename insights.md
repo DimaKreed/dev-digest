@@ -91,8 +91,48 @@ adding a skill means adding a row there too. That table is edited concurrently b
 sessions, so re-read it immediately before editing.
 _2026-08-01_
 
+### pnpm self-management fetches an artifact matching its own distribution kind — the exe variant pulls an *unsigned* binary that Smart App Control blocks
+**Symptom:** `./scripts/dev.sh` died at once with `...\pnpm\store\v11\links\@pnpm\exe\10.34.5\...
+\pnpm.exe' was blocked by your organization's Device Guard policy`. Chain: `server/package.json`
+and `client/package.json` pin `packageManager: pnpm@10.34.5`; the pnpm on PATH was the
+**standalone-exe** distribution, so to honor that pin it downloaded `@pnpm/exe@10.34.5` into
+`%LOCALAPPDATA%\pnpm\store\` — and that binary is `NotSigned`. Smart App Control
+(`VerifiedAndReputablePolicyState = 1` under `HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy`,
+policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`) blocks unsigned binaries that have no
+Intelligent Security Graph reputation yet — so the failure is **transient but recurring**: the
+identical exe ran fine ~2.5 h later once reputation resolved, and it returns on every version bump.
+**Rule:** don't wait out the reputation race and don't touch the policy — run pnpm as JS under the
+already-trusted, `Valid`-signed `node.exe`. `corepack pnpm` does exactly that and honors the same
+pin (verified `10.34.5` in `server/` and `client/`, `11.18.0` where no pin exists), so it is a
+drop-in for every `pnpm` call in `scripts/dev.sh`. pnpm's **JS** distribution — the `npm i -g pnpm`
+that `scripts/dev.sh:38` itself suggests — also works, because self-management then fetches the JS
+`pnpm` package instead of `@pnpm/exe`. Confirm any block with
+`Get-WinEvent -LogName Microsoft-Windows-CodeIntegrity/Operational | ? Message -match 'pnpm'`
+(events 3033 + 3077).
+_2026-08-03_
+
+### A repo script that shells out to a unix-only binary silently excludes the Windows dev box
+**Symptom:** `scripts/make-skill-sample.sh` died with `zip: command not found`. Git Bash ships no
+`zip`, and Windows is a first-class dev environment in this repo — the PR gate itself
+(`.claude/hooks/*.ps1`) is PowerShell-only — so a bash script assuming GNU userland is broken for
+the primary platform, not an edge case.
+**Rule:** build archives (and anything similar) in Node against a dependency that `pnpm install`
+already put on disk, rather than a system binary. `scripts/make-skill-sample.mjs` walks the
+directory and calls `zipSync` from `server/node_modules/fflate`, and behaves identically on all
+three platforms. When writing a repo script, assume only `node`, `git` and POSIX shell builtins.
+_2026-08-03_
+
 ## Recurring Errors & Fixes
 
 ## Session Notes
 
 ## Open Questions
+
+### Will corepack's vendored `fastlist-*.exe` hit the same Smart App Control block as `@pnpm/exe` did?
+`%LOCALAPPDATA%\node\corepack\v1\pnpm\<version>\dist\vendor\fastlist-0.3.0-{x64,x86}.exe` are both
+`NotSigned`, so they carry the same exposure that blocked `@pnpm/exe`. Nothing in `dev.sh`
+(`install`, `db:migrate`, `db:seed`, `dev`) reached them and the full stack came up clean, but pnpm
+shells out to fastlist for Windows process enumeration — so a command that lists or kills child
+processes may still trip it. If a second Device Guard block ever names `fastlist`, that is the
+source, not pnpm itself.
+_2026-08-03_

@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import multipart from '@fastify/multipart';
 import { FastifySSEPlugin } from 'fastify-sse-v2';
 import {
   validatorCompiler,
@@ -17,6 +18,7 @@ import { Container, type ContainerOverrides } from './platform/container.js';
 import { AppError } from './platform/errors.js';
 import { modules } from './modules/index.js';
 import { ReviewService } from './modules/reviews/service.js';
+import { MAX_UPLOAD_BYTES } from './modules/skills/constants.js';
 
 // Attach the DI container to every request/instance.
 declare module 'fastify' {
@@ -89,6 +91,13 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(helmet);
   await app.register(cors, { origin: [config.webOrigin], credentials: true });
   await app.register(FastifySSEPlugin);
+
+  // Skill import (.md / .zip) is the only multipart endpoint. One small file per
+  // request — a skill is a markdown document, not a payload. Oversize uploads
+  // are rejected by the plugin (413) before any handler sees them.
+  await app.register(multipart, {
+    limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 4 },
+  });
 
   // Global rate limit. Disabled under test so integration suites can hammer
   // endpoints via inject(); per-route overrides live on the routes themselves.

@@ -183,4 +183,9 @@ export class ReviewRepository {
   getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return runRepo.getRunTrace(this.db, runId);
   }
+
+  /** Record which skills were injected into this run's prompt. */
+  saveRunSkills(runId: string, skillIds: string[]): Promise<void> {
+    return runRepo.saveRunSkills(this.db, runId, skillIds);
+  }
 }

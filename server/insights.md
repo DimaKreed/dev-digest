@@ -34,6 +34,16 @@ the helper's mappers back.
 the query code. Both files then depend inward and the cycle disappears. `src/modules/agents/helpers.ts:3`
 _2026-08-01_
 
+**Update — the other half: `db/rows.ts` is closed to a helper too, and depcruise counts a
+`import type` as an edge.** Routing the row type *around* the cycle by importing it straight from
+the schema side — `import type { SkillRow } from '../../db/rows.js'` — just swaps one error for
+another: `error c5-pure-helpers: src/modules/skills/helpers.ts → src/db/rows.ts`. That rule's `to`
+is `^src/(db|adapters)/`, which `db/rows.ts` matches exactly as `db/schema` does, and a type-only
+import erases at runtime but is still an import edge to dependency-cruiser. So for any module whose
+`helpers.ts` needs a row type, `ports.ts` is not the tidier option — it is the only legal one:
+`ports.ts` re-exports from `db/rows.ts`, and `helpers.ts` and `repository.ts` both import inward
+from it. `src/modules/skills/ports.ts` _2026-08-03_
+
 ## Tool & Library Notes
 
 ### A dependency-cruiser rule cannot see a type that arrives through the `Container` God object
@@ -47,6 +57,18 @@ grep — `rg -n '\$inferSelect|PostgresJsDatabase|db/rows' src/modules/*/service
 depcruise rule anyway; it catches the day someone imports the handle directly.
 `src/modules/reviews/service.ts:33`
 _2026-08-01_
+
+### Drizzle's `text(col, { enum: [...] })` is a TypeScript union only — no CHECK reaches Postgres
+**Symptom:** widening the skills `source` enum with `'imported_file'` looked like it needed a
+migration, but `pnpm db:generate` emitted nothing for it — which reads like drizzle-kit failing to
+notice the change.
+**Rule:** it did notice; there is nothing to emit. The generated DDL is a bare
+`"source" text NOT NULL` (`src/db/migrations/0000_init.sql:322`), so the allowed set lives entirely
+in TypeScript. Widening one is a no-migration, three-file edit: the `enum:` array in
+`src/db/schema/<table>.ts` plus the matching `z.enum` in **both** `vendor/shared` copies. The
+converse is the trap — *narrowing* one also generates no migration, so rows keep values the types
+now claim are impossible, and the next `Zod.parse` on read throws on real data.
+_2026-08-03_
 
 ## Recurring Errors & Fixes
 

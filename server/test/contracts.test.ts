@@ -13,6 +13,10 @@ import {
   MemoryItem,
   RunTrace,
   RunStats,
+  PromptAssembly,
+  Skill,
+  SkillSource,
+  SkillStats,
   Settings,
   Repo,
   PrDetail,
@@ -178,6 +182,53 @@ describe('AI contracts parse fixtures', () => {
     const stats = { duration_ms: 8200, tokens_in: 14820, tokens_out: 1240, findings: 3, grounding: '3/3 passed' };
     expect(() => RunStats.parse(stats)).not.toThrow();
     expect(RunStats.parse(stats).cost_usd).toBeUndefined();
+  });
+
+  // Same jsonb hazard, same fix: traces written before skills were wired have
+  // no `skills_tokens` key. `nullish`, not `nullable` — see insights.md.
+  it('PromptAssembly accepts a legacy trace with no skills_tokens key', () => {
+    const assembly = { system: 'You are a reviewer.', skills: null, user: '## Diff to review' };
+    expect(() => PromptAssembly.parse(assembly)).not.toThrow();
+    expect(PromptAssembly.parse(assembly).skills_tokens).toBeUndefined();
+  });
+});
+
+describe('skill contracts', () => {
+  it('Skill round-trips with the computed tokens/used_by fields', () => {
+    const skill = Skill.parse({
+      id: 's1',
+      name: 'pr-quality-rubric',
+      description: 'Evaluate overall PR quality.',
+      type: 'rubric',
+      source: 'manual',
+      body: '# PR Quality Rubric\n\nEvaluate…',
+      enabled: true,
+      version: 5,
+      tokens: 166,
+      used_by: 3,
+    });
+    expect(skill.tokens).toBe(166);
+    expect(skill.used_by).toBe(3);
+    expect(skill.evidence_files).toBeUndefined();
+  });
+
+  it('SkillSource accepts imported_file (uploaded .md/.zip)', () => {
+    expect(() => SkillSource.parse('imported_file')).not.toThrow();
+  });
+
+  it('SkillStats keeps accept_rate null when nothing is triaged', () => {
+    const stats = SkillStats.parse({
+      used_by: 1,
+      agents: [{ id: 'a1', name: 'Test Quality Reviewer' }],
+      runs_pulled: 0,
+      findings_30d: 0,
+      accepted: 0,
+      dismissed: 0,
+      accept_rate: null,
+      findings_by_category: [],
+    });
+    // null, not 0 — "nothing triaged yet" is not "0% accepted".
+    expect(stats.accept_rate).toBeNull();
   });
 });
 

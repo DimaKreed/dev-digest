@@ -320,4 +320,186 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(body.runs.length).toBeGreaterThanOrEqual(2);
     await app.close();
   });
+
+  /**
+   * The skills wiring end-to-end: linked skill bodies reach the assembled
+   * prompt, the trace records the block plus its token cost, and `run_skills`
+   * records which skills were in the prompt (the basis of every per-skill stat).
+   *
+   * This is the control experiment the lesson demonstrates, asserted rather
+   * than eyeballed: the SAME agent, with and without skills attached.
+   */
+  describe('skills in the prompt', () => {
+    async function createSkill(
+      app: Awaited<ReturnType<typeof appWith>>,
+      name: string,
+      body: string,
+      enabled = true,
+    ) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/skills',
+        payload: { name, type: 'custom', body, enabled },
+      });
+      return res.json() as { id: string; name: string };
+    }
+
+    async function runAndTrace(
+      app: Awaited<ReturnType<typeof appWith>>,
+      prId: string,
+      agentId: string,
+      expected: number,
+    ) {
+      const body = (
+        await app.inject({ method: 'POST', url: `/pulls/${prId}/review`, payload: { agentId } })
+      ).json();
+      await waitForPrRuns(pg.handle.db, prId, { expected });
+      const runId = body.runs[0].run_id as string;
+      const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+      return { runId, trace };
+    }
+
+    it('omits the skills block entirely when the agent has none attached', async () => {
+      const app = await appWith(REVIEW_FIXTURE);
+      const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+      const agent = (
+        await app.inject({
+          method: 'POST',
+          url: '/agents',
+          payload: { name: 'NoSkills', provider: 'openai', model: 'gpt-4.1', system_prompt: 'x' },
+        })
+      ).json();
+
+      const { runId, trace } = await runAndTrace(app, pr.id, agent.id, 1);
+      expect(trace.prompt_assembly.skills).toBeNull();
+      expect(trace.prompt_assembly.skills_tokens).toBeNull();
+      expect(trace.prompt_assembly.user).not.toContain('## Skills / rules');
+
+      const rows = await pg.handle.db
+        .select()
+        .from(t.runSkills)
+        .where(eq(t.runSkills.runId, runId));
+      expect(rows).toHaveLength(0);
+      await app.close();
+    });
+
+    it('injects linked skills in order, records the token cost and run_skills', async () => {
+      const app = await appWith(REVIEW_FIXTURE);
+      const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+      const agent = (
+        await app.inject({
+          method: 'POST',
+          url: '/agents',
+          payload: { name: 'WithSkills', provider: 'openai', model: 'gpt-4.1', system_prompt: 'x' },
+        })
+      ).json();
+
+      const first = await createSkill(app, 'first-rule', '# FIRST RULE\n\nAlpha.');
+      const second = await createSkill(app, 'second-rule', '# SECOND RULE\n\nBeta.');
+      // Deliberately attached second-then-first, so a passing assertion proves
+      // the ORDER comes from agent_skills.order and not from insertion order.
+      await app.inject({
+        method: 'POST',
+        url: `/agents/${agent.id}/skills`,
+        payload: { skill_ids: [second.id, first.id] },
+      });
+
+      const { runId, trace } = await runAndTrace(app, pr.id, agent.id, 1);
+
+      expect(trace.prompt_assembly.skills).toContain('SECOND RULE');
+      expect(trace.prompt_assembly.skills).toContain('FIRST RULE');
+      expect(trace.prompt_assembly.skills.indexOf('SECOND RULE')).toBeLessThan(
+        trace.prompt_assembly.skills.indexOf('FIRST RULE'),
+      );
+      // The block is rendered into the user message, under its own heading.
+      expect(trace.prompt_assembly.user).toContain('## Skills / rules');
+      // Real token cost, counted server-side.
+      expect(trace.prompt_assembly.skills_tokens).toBeGreaterThan(0);
+
+      const rows = await pg.handle.db
+        .select()
+        .from(t.runSkills)
+        .where(eq(t.runSkills.runId, runId));
+      expect(rows.map((r) => r.skillId).sort()).toEqual([first.id, second.id].sort());
+      await app.close();
+    });
+
+    /**
+     * Defence in depth for "linked ⇒ enabled".
+     *
+     * This state is UNREACHABLE through the API: linking a disabled skill is
+     * rejected with 400, and disabling one detaches it from every agent. So the
+     * link is inserted straight into `agent_skills`, bypassing the service, to
+     * prove the executor's own `.filter(l => l.skill.enabled)` still holds if
+     * the invariant is ever broken by a direct DB edit or a bad seed.
+     */
+    it('the executor filters a disabled skill even if one is linked directly in the DB', async () => {
+      const app = await appWith(REVIEW_FIXTURE);
+      const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+      const agent = (
+        await app.inject({
+          method: 'POST',
+          url: '/agents',
+          payload: { name: 'MixedSkills', provider: 'openai', model: 'gpt-4.1', system_prompt: 'x' },
+        })
+      ).json();
+
+      const on = await createSkill(app, 'enabled-rule', '# ENABLED RULE\n\nOn.');
+      const off = await createSkill(app, 'disabled-rule', '# DISABLED RULE\n\nOff.', false);
+
+      await app.inject({
+        method: 'POST',
+        url: `/agents/${agent.id}/skills`,
+        payload: { skill_ids: [on.id] },
+      });
+      // Bypass the service on purpose — see the docblock above.
+      await pg.handle.db
+        .insert(t.agentSkills)
+        .values({ agentId: agent.id, skillId: off.id, order: 1 });
+
+      const { runId, trace } = await runAndTrace(app, pr.id, agent.id, 1);
+      expect(trace.prompt_assembly.skills).toContain('ENABLED RULE');
+      expect(trace.prompt_assembly.skills).not.toContain('DISABLED RULE');
+
+      // …and it is not counted as pulled either, so the stats stay honest.
+      const rows = await pg.handle.db
+        .select()
+        .from(t.runSkills)
+        .where(eq(t.runSkills.runId, runId));
+      expect(rows.map((r) => r.skillId)).toEqual([on.id]);
+      await app.close();
+    });
+
+    it('per-skill stats count runs that pulled the skill', async () => {
+      const app = await appWith(REVIEW_FIXTURE);
+      const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+      const agent = (
+        await app.inject({
+          method: 'POST',
+          url: '/agents',
+          payload: { name: 'StatsAgent', provider: 'openai', model: 'gpt-4.1', system_prompt: 'x' },
+        })
+      ).json();
+      const skill = await createSkill(app, 'stats-rule', '# STATS RULE\n\nCount me.');
+      await app.inject({
+        method: 'POST',
+        url: `/agents/${agent.id}/skills`,
+        payload: { skill_ids: [skill.id] },
+      });
+
+      await runAndTrace(app, pr.id, agent.id, 1);
+
+      const stats = (
+        await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats` })
+      ).json();
+      expect(stats.runs_pulled).toBe(1);
+      expect(stats.used_by).toBe(1);
+      // One grounded CRITICAL survives the grounding gate in this fixture.
+      expect(stats.findings_30d).toBe(1);
+      // Nothing triaged yet ⇒ null, not 0.
+      expect(stats.accept_rate).toBeNull();
+      expect(stats.findings_by_category).toEqual([{ category: 'security', count: 1 }]);
+      await app.close();
+    });
+  });
 });

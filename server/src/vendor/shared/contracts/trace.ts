@@ -39,6 +39,11 @@ export type ToolCall = z.infer<typeof ToolCall>;
 export const PromptAssembly = z.object({
   system: z.string(),
   skills: z.string().nullish(),
+  /** Tokens the skills block added to the prompt; null when no skills were
+      injected. `nullish` for the same reason as `RunStats.cost_usd` below —
+      this whole object round-trips through the `run_traces.trace` jsonb, and
+      traces written before this key existed simply omit it. */
+  skills_tokens: z.number().int().nullish(),
   memory: z.string().nullish(),
   specs: z.string().nullish(),
   /** Callers-of-changed-symbols digest (T1.3); null when absent. */

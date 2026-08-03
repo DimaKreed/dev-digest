@@ -115,7 +115,16 @@ export type MemoryItem = z.infer<typeof MemoryItem>;
 export const SkillType = z.enum(['rubric', 'convention', 'security', 'custom']);
 export type SkillType = z.infer<typeof SkillType>;
 
-export const SkillSource = z.enum(['manual', 'imported_url', 'extracted', 'community']);
+// `imported_file` = uploaded .md or .zip; `imported_url` = fetched from a URL.
+// NOTE: the DB column is plain `text` (Drizzle's `enum` option is TS-level only,
+// it emits no CHECK), so adding a value here needs no migration.
+export const SkillSource = z.enum([
+  'manual',
+  'imported_url',
+  'imported_file',
+  'extracted',
+  'community',
+]);
 export type SkillSource = z.infer<typeof SkillSource>;
 
 export const Skill = z.object({
@@ -128,8 +137,70 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  /** Token cost of `body`, counted server-side. The client has no tokenizer. */
+  tokens: z.number().int(),
+  /** How many agents link this skill (COUNT over agent_skills). */
+  used_by: z.number().int(),
 });
 export type Skill = z.infer<typeof Skill>;
+
+/** One immutable body snapshot. `note` is the author's "what changed" label. */
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  note: z.string().nullish(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
+
+/**
+ * Per-skill rollup. Every run-derived number is scoped to runs where this skill
+ * was actually in the prompt (`run_skills`) — a single finding is NOT
+ * attributable to a single skill, since one run concatenates N skill bodies.
+ */
+export const SkillStats = z.object({
+  used_by: z.number().int(),
+  agents: z.array(z.object({ id: z.string(), name: z.string() })),
+  runs_pulled: z.number().int(),
+  findings_30d: z.number().int(),
+  accepted: z.number().int(),
+  dismissed: z.number().int(),
+  /** accepted / (accepted + dismissed); null when nothing has been triaged. */
+  accept_rate: z.number().nullable(),
+  findings_by_category: z.array(
+    z.object({ category: z.string(), count: z.number().int() }),
+  ),
+});
+export type SkillStats = z.infer<typeof SkillStats>;
+
+/**
+ * What an uploaded .md/.zip yields BEFORE anything is written. The import route
+ * that produces this performs no writes at all — saving is a separate, explicit
+ * POST /skills after the user has read the body.
+ */
+export const SkillImportPreview = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  tokens: z.number().int(),
+  /** Which archive entry the body came from, e.g. "SKILL.md". */
+  source_file: z.string(),
+  /**
+   * Archive entries that did NOT become the body:
+   *  - `executable`       — never decompressed, never read, never run
+   *  - `not_markdown`     — not decompressed either (only .md is read)
+   *  - `unused_markdown`  — markdown, but a different entry was chosen
+   */
+  skipped: z.array(
+    z.object({
+      path: z.string(),
+      reason: z.enum(['executable', 'not_markdown', 'unused_markdown']),
+    }),
+  ),
+});
+export type SkillImportPreview = z.infer<typeof SkillImportPreview>;
 
 export const CommunitySkill = z.object({
   name: z.string(),

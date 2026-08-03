@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -202,6 +202,23 @@ export class AgentsRepository {
   async skillIdsForAgent(agentId: string): Promise<string[]> {
     const links = await this.linkedSkills(agentId);
     return links.map((l) => l.skill.id);
+  }
+
+  /**
+   * Which of `skillIds` are globally disabled — those may not be linked.
+   *
+   * "Linked ⇒ enabled" is an invariant, not a UI hint: a disabled skill never
+   * reaches the prompt, so allowing the link would show a checked box for a
+   * skill that does nothing. Returns names (not ids) because the caller puts
+   * them in a user-facing 400.
+   */
+  async disabledAmong(skillIds: string[]): Promise<string[]> {
+    if (skillIds.length === 0) return [];
+    const rows = await this.db
+      .select({ name: t.skills.name })
+      .from(t.skills)
+      .where(and(inArray(t.skills.id, skillIds), eq(t.skills.enabled, false)));
+    return rows.map((r) => r.name);
   }
 
   /** Link a skill to an agent at a given order (idempotent: upserts order). */

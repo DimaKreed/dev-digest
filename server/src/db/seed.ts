@@ -7,7 +7,10 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { SEED_SKILLS, SEED_AGENT_SKILLS } from './seed-skills.js';
+import { CONTROL_EXPERIMENT_PULLS } from './seed-pulls.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -19,11 +22,16 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * with a few findings, the four built-in agents (General + Security +
+ * Performance + Test Quality) on the default openrouter/deepseek-v4-flash
+ * provider+model, the demo skills with their agent links, and the two
+ * control-experiment PRs (#483, #484).
  *
- * Course lessons populate the other tables (skills, conventions, memory, eval,
- * …) once their features are built — they start empty here.
+ * NOTE: this creates no `agent_runs`, so every run-derived surface (cost,
+ * timeline, per-skill Stats) is legitimately empty until you trigger a review.
+ *
+ * Course lessons populate the remaining tables (conventions, memory, eval, …)
+ * once their features are built — they start empty here.
  */
 
 export const DEFAULT_WORKSPACE_NAME = 'default';
@@ -212,6 +220,18 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: 'Test Quality Reviewer',
+      description:
+        'Checks test quality: uncovered branches, missed corner cases, over-mocking, flake risk.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -219,6 +239,105 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- demo skills + their agent links ----
+  // Skills are reusable instruction blocks, shared across agents. Same
+  // insert-if-absent idempotency as the agents above: re-seeding never
+  // overwrites a skill the user has since edited.
+  for (const s of SEED_SKILLS) {
+    const [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, s.name)));
+    if (existing) continue;
+    const [row] = await db
+      .insert(t.skills)
+      .values({
+        workspaceId,
+        name: s.name,
+        description: s.description,
+        type: s.type,
+        source: s.source,
+        body: s.body,
+        enabled: s.enabled,
+        version: 1,
+      })
+      .returning();
+    // v1 body snapshot. The repository does this on its own insert path; the
+    // seed writes the table directly, so it must do it here too — otherwise a
+    // seeded skill shows an empty Versions tab.
+    await db
+      .insert(t.skillVersions)
+      .values({ skillId: row!.id, version: 1, body: s.body, note: 'Initial version' })
+      .onConflictDoNothing();
+  }
+
+  for (const [agentName, skillNames] of Object.entries(SEED_AGENT_SKILLS)) {
+    const [agent] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, agentName)));
+    if (!agent) continue;
+    const existingLinks = await db
+      .select()
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, agent.id));
+    if (existingLinks.length > 0) continue; // user owns the links once they exist
+    for (const [order, skillName] of skillNames.entries()) {
+      const [skill] = await db
+        .select()
+        .from(t.skills)
+        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, skillName)));
+      if (!skill) continue;
+      await db
+        .insert(t.agentSkills)
+        .values({ agentId: agent.id, skillId: skill.id, order })
+        .onConflictDoNothing();
+    }
+  }
+
+  // ---- control-experiment PRs (#483 test quality, #484 API contract) ----
+  // These carry real patches so a review can run with no clone and no token.
+  for (const p of CONTROL_EXPERIMENT_PULLS) {
+    const [existing] = await db
+      .select()
+      .from(t.pullRequests)
+      .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, p.number)));
+    if (existing) continue;
+    const [row] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: p.number,
+        title: p.title,
+        author: p.author,
+        branch: p.branch,
+        base: 'main',
+        headSha: p.headSha,
+        additions: p.files.reduce((n, f) => n + f.additions, 0),
+        deletions: p.files.reduce((n, f) => n + f.deletions, 0),
+        filesCount: p.files.length,
+        status: 'needs_review',
+        body: p.body,
+      })
+      .returning();
+    await db.insert(t.prFiles).values(
+      p.files.map((f) => ({
+        prId: row!.id,
+        path: f.path,
+        additions: f.additions,
+        deletions: f.deletions,
+        patch: f.patch,
+      })),
+    );
+    await db.insert(t.prCommits).values({
+      prId: row!.id,
+      sha: p.headSha,
+      message: p.commitMessage,
+      author: p.author,
+    });
   }
 
   return { workspaceId, userId };

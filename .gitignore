@@ -24,6 +24,10 @@ test-results/
 # emdash worktree config (local)
 .emdash.json
 
+# Skill-sample archives are built on demand from the folders beside them
+# (node scripts/make-skill-sample.mjs), so the binary never enters git.
+docs/skill-samples/*.zip
+
 # Personal Claude Code overrides. Ignored deliberately: untracked files are part of the
 # pr-self-review fingerprint, so a stray settings file would make the gate's own configuration
 # part of what the gate reviews. See .claude/hooks/README.md.

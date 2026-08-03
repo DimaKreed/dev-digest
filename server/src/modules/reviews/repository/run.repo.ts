@@ -184,6 +184,22 @@ export async function saveRunTrace(db: Db, runId: string, trace: RunTrace): Prom
     .onConflictDoUpdate({ target: t.runTraces.runId, set: { trace } });
 }
 
+/**
+ * Record which skills were injected into this run's prompt.
+ *
+ * Idempotent (a re-saved run keeps one row per skill) and a no-op when the
+ * agent had no enabled skills linked. Per-skill stats read this table; without
+ * it, "was this skill in the prompt?" is unanswerable after the fact, because
+ * `PromptAssembly.skills` is a single concatenated string.
+ */
+export async function saveRunSkills(db: Db, runId: string, skillIds: string[]): Promise<void> {
+  if (skillIds.length === 0) return;
+  await db
+    .insert(t.runSkills)
+    .values(skillIds.map((skillId) => ({ runId, skillId })))
+    .onConflictDoNothing();
+}
+
 export async function getRunTrace(db: Db, runId: string): Promise<RunTrace | undefined> {
   const [row] = await db.select().from(t.runTraces).where(eq(t.runTraces.runId, runId));
   return row ? (row.trace as RunTrace) : undefined;

@@ -27,7 +27,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
         // Only declare a JSON body when one is actually sent — otherwise a
         // body-less POST/PUT (e.g. tour generate, refresh, reindex) trips
         // Fastify's "Body cannot be empty when content-type is application/json".
-        ...(init?.body != null ? { "content-type": "application/json" } : {}),
+        // FormData is excluded on purpose: the browser must set its own
+        // multipart content-type, because only it knows the boundary token.
+        ...(init?.body != null && !(init.body instanceof FormData)
+          ? { "content-type": "application/json" }
+          : {}),
         ...(init?.headers ?? {}),
       },
     });
@@ -66,6 +70,9 @@ export const api = {
   get: <T>(path: string) => apiFetch<T>(path),
   post: <T>(path: string, body?: unknown) =>
     apiFetch<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
+  /** POST a file upload. The body stays raw FormData — see apiFetch's headers. */
+  upload: <T>(path: string, form: FormData) =>
+    apiFetch<T>(path, { method: "POST", body: form }),
   put: <T>(path: string, body?: unknown) =>
     apiFetch<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>
