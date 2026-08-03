@@ -1,0 +1,1 @@
+export { ScanReport } from "./ScanReport";

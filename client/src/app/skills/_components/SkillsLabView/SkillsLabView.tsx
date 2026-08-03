@@ -19,7 +19,7 @@ import { AppShell } from "../../../../components/app-shell";
 import { SkillCard } from "../SkillCard";
 import { SkillEditor } from "../SkillEditor";
 import { ImportSkillDrawer } from "../ImportSkillDrawer";
-import { CreateSkillModal } from "../CreateSkillModal";
+import { CreateSkillModal } from "@/components/CreateSkillModal";
 import { useSkills, useSkill, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { ApiError } from "../../../../lib/api";
 import { matchesQuery } from "./helpers";

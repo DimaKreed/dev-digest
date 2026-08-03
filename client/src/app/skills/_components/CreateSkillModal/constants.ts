@@ -1,8 +1,9 @@
-import type { SkillType } from "@devdigest/shared";
+/* Compatibility shim. CreateSkillModal moved to src/components/CreateSkillModal/
+   (a second route — /repos/:repoId/conventions — now opens it, and one route's
+   _components/ is not an import target for another route).
 
-export const MODAL_WIDTH = 640;
-
-/** Mirrors the `SkillType` enum in @devdigest/shared. */
-export const SKILL_TYPES: readonly SkillType[] = ["rubric", "convention", "security", "custom"];
-
-export const DEFAULT_TYPE: SkillType = "custom";
+   `SKILL_TYPES` is still deep-imported from here by ImportSkillDrawer and by
+   SkillEditor/_components/ConfigTab. Re-export rather than duplicate, so there
+   stays exactly one list. Delete this file once those two imports point at
+   "@/components/CreateSkillModal/constants". */
+export { DEFAULT_TYPE, MODAL_WIDTH, SKILL_TYPES } from "@/components/CreateSkillModal/constants";
