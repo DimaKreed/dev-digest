@@ -86,8 +86,10 @@ These block. A diff that introduces one is not done.
       export interface UnitOfWork { withTransaction<T>(fn: (tx: TxHandle) => Promise<T>): Promise<T> }
 
   Repositories default to their own handle when no `tx` is passed, so they still work standalone.
-  There are currently **zero** `.transaction(` calls in `server/` — do not add a fifth non-atomic
-  multi-write sequence.
+  `server/` has **one** `.transaction(` call today — `ConventionsRepository.rescanForRepo`
+  (`src/modules/conventions/repository.ts`), which wraps read-existing / delete-pending /
+  insert-fresh and is the shape to copy. At least four other multi-write sequences are still
+  non-atomic; do not add a fifth.
 - **H10** Validation is schema-first: declare Zod `params` / `body` / `response` on the route and
   let the type provider reject with 422 before the handler runs. No hand-rolled `.parse()` in a
   handler.
@@ -151,7 +153,7 @@ rg -n 'export (interface|type) \w*Repository' src/modules/*/ports.ts            
 rg -n 'process\.env|Date\.now|Math\.random|new Date\(|fetch\(' ../reviewer-core/src  # C5
 rg -n 'constructor\(\s*(private |readonly )?\w*container' src/modules/*/service.ts   # H7
 rg -n '\$inferSelect|PostgresJsDatabase|db/rows' src/modules/*/service.ts        # H8
-rg -n '\.transaction\(' src                                                       # H9 — expect 0 today
+rg -n '\.transaction\(' src              # H9 — every hit must be a repository boundary, not 0
 ```
 
 ## Audit mode — procedure

@@ -11,6 +11,21 @@ Maintained by the [engineering-insights](../.claude/skills/engineering-insights/
 
 ## What Doesn't Work
 
+### Styling an element cannot darken the widget the OS paints for it — only `color-scheme` can, and nothing declared it
+**Symptom:** on the dark theme the `<select>` dropdown popup and the textarea resize grabber rendered
+**light**, while the `<select>` box and textarea themselves were correctly dark. Styling the element
+harder does nothing: the popup and the grabber are painted by the UA/OS, not by our CSS.
+`color-scheme` appeared **nowhere** in the client, and hand-styled scrollbars had masked the gap for
+everything else that would normally reveal it.
+**Rule:** declare `color-scheme: dark` on `:root, [data-theme="dark"]` and `light` on
+`[data-theme="light"]` — it is what tells the browser which palette to use for every UA-drawn
+control (`<select>` popups, resize grabbers, autofill, spinners, date pickers). Both are now in
+`src/vendor/ui/styles.css:16,61`. An `<option>` additionally honours only `background` and `color`,
+so `SelectInput` sets those inline (`src/vendor/ui/kit/SelectInput.tsx:49-57`); nothing else on an
+`<option>` is reliable. When adding any native form control, check it against **both** themes rather
+than assuming the token colours reached it.
+_2026-08-04_
+
 ### `onOpenChange={(open) => setX(open ? me : null)}` breaks when two hover panels sit side by side
 **Symptom:** three severity chips in a PR row, each a `HoverCard` reporting open/closed into one
 piece of row state that gates the findings fetch. Sliding from the CRITICAL chip to the WARNING one
