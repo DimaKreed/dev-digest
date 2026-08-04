@@ -8,13 +8,20 @@ repository, as an installable skill.
 | Path | What it is |
 | --- | --- |
 | `.claude-plugin/plugin.json` | Plugin manifest, version `1.0.0` |
-| `skills/payments-api-conventions/SKILL.md` | The convention skill for the demo repo `acme/payments-api` |
+| `skills/dev-digest-conventions/SKILL.md` | The convention skill for `DimaKreed/dev-digest` |
 
-Once installed, the skill is available as `/payments-api-conventions`, and Claude invokes
+Once installed, the skill is available as `/dev-digest-conventions`, and Claude invokes
 it on its own when a task matches its description.
 
-> The bundled `SKILL.md` is a **generated sample** at the moment — a realistic stand-in so
-> the plugin is installable. It is replaced wholesale by real extractor output.
+> The bundled `SKILL.md` is **real extractor output**, written straight from
+> `GET /repos/:id/conventions/plugin`: three accepted rules, each carrying the `file:line`
+> it was verified at. Re-export rather than hand-editing it.
+>
+> The subject is `dev-digest` rather than the demo repo `acme/payments-api` because the
+> extractor can only run where it can read code: it samples ranked files from a **clone** and
+> re-reads every cited anchor out of that clone before a rule is persisted. `acme/payments-api`
+> is seeded from PR patches with no clone and no index, so a scan there returns
+> `409 repo_not_indexed` by design.
 
 ## Install
 
