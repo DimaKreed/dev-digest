@@ -50,5 +50,16 @@ export const MAX_REPO_MAP_CHARS = 8_000;
 /** Cap on the whole assembled payload. */
 export const MAX_PAYLOAD_CHARS = 120_000;
 
+/**
+ * Timeout for the single extraction call, well above the 90s provider default.
+ *
+ * A scan is one large structured completion, and OpenRouter routes it to a
+ * different upstream every time — measured 4.7s to 166.9s for the same payload.
+ * At 90s the slowest draws are abandoned mid-generation and retried, which is
+ * how one scan reached 13m48s. Waiting out a slow provider costs 170s once;
+ * abandoning it costs 90s and buys another lottery ticket.
+ */
+export const EXTRACTION_TIMEOUT_MS = 300_000;
+
 /** `version` stamped into an exported plugin bundle's manifest. */
 export const PLUGIN_FORMAT_VERSION = '1.0.0';

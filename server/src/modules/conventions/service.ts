@@ -22,13 +22,14 @@ import {
   CONFIG_FILES,
   buildSamplePayload,
   buildSkillDraft,
-  normalizeRule,
   sliceLines,
+  normalizeRule,
   toDto,
   verifyEvidence,
   type SampleFile,
 } from './helpers.js';
 import {
+  EXTRACTION_TIMEOUT_MS,
   MAX_SNIPPET_LINES,
   MIN_DISTINCT_FILES,
   PLUGIN_FORMAT_VERSION,
@@ -148,6 +149,7 @@ export class ConventionsService {
         { role: 'user', content: buildSamplePayload({ files, configs, repoMap }) },
       ],
       temperature: 0,
+      timeoutMs: EXTRACTION_TIMEOUT_MS,
     });
 
     const sampled = new Map(files.map((f) => [f.path, f.text]));
