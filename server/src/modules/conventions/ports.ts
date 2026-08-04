@@ -19,6 +19,19 @@ import { MAX_CANDIDATES } from './constants.js';
  */
 export type { ConventionRow };
 
+/**
+ * The fields a suppression key is derived from. Satisfied by both a persisted
+ * `ConventionRow` and a fresh `InsertConvention`, so `rescanForRepo` can key
+ * existing and incoming candidates through one pure function. Declared here
+ * rather than in `helpers.ts` so ring 0 and the repository both depend inward
+ * on this file instead of on each other.
+ */
+export interface SuppressionInput {
+  rule: string;
+  evidencePath: string | null;
+  evidenceStartLine: number | null;
+}
+
 /** Schema name passed to `completeStructured` (and keyed by test fixtures). */
 export const EXTRACTION_SCHEMA_NAME = 'ConventionExtraction';
 

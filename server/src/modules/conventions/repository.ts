@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { ConventionCategory, ConventionStatus } from '@devdigest/shared';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { ConventionRow } from './ports.js';
+import type { ConventionRow, SuppressionInput } from './ports.js';
 
 /**
  * Conventions data-access. The ONLY place that touches `conventions`.
@@ -159,7 +159,7 @@ export class ConventionsRepository {
     workspaceId: string,
     repoId: string,
     values: InsertConvention[],
-    ruleKey: (rule: string) => string,
+    keysOf: (c: SuppressionInput) => string[],
   ): Promise<{ rows: ConventionRow[]; suppressed: number }> {
     return this.db.transaction(async (tx) => {
       const existing = await tx
@@ -178,8 +178,10 @@ export class ConventionsRepository {
           ),
         );
 
-      const seen = new Set(triaged.map((r) => ruleKey(r.rule)));
-      const fresh = values.filter((v) => !seen.has(ruleKey(v.rule)));
+      // A triaged row contributes every one of its keys; a fresh candidate is
+      // dropped when ANY of its own keys already appears there.
+      const seen = new Set(triaged.flatMap((r) => keysOf(r)));
+      const fresh = values.filter((v) => !keysOf(v).some((k) => seen.has(k)));
       const suppressed = values.length - fresh.length;
 
       if (fresh.length === 0) return { rows: triaged, suppressed };

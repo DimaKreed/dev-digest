@@ -6,8 +6,10 @@ import {
   normalizeRule,
   sliceLines,
   slugify,
+  suppressionKeys,
   verifyEvidence,
 } from '../src/modules/conventions/helpers.js';
+import type { SuppressionInput } from '../src/modules/conventions/ports.js';
 
 /**
  * Hermetic unit tests for the conventions core — no DB, no Docker, no model.
@@ -220,6 +222,50 @@ describe('normalizeRule', () => {
     expect(normalizeRule('Use async/await')).not.toBe(
       normalizeRule('Prefer async/await over .then() chains'),
     );
+  });
+});
+
+describe('suppressionKeys', () => {
+  const shareAKey = (a: SuppressionInput, b: SuppressionInput) =>
+    suppressionKeys(a).some((k) => suppressionKeys(b).includes(k));
+
+  it('matches a REWORDED rule that anchors on the same verified line', () => {
+    // The live failure mode: text differs every scan, the anchor does not.
+    const triaged = {
+      rule: 'Import shared types using `import type` from `@devdigest/shared`.',
+      evidencePath: 'client/src/app/agents/[id]/AgentEditor.tsx',
+      evidenceStartLine: 9,
+    };
+    const reproposed = {
+      rule: 'Import shared types with `import type` from the `@devdigest/shared` package.',
+      evidencePath: 'client/src/app/agents/[id]/AgentEditor.tsx',
+      evidenceStartLine: 9,
+    };
+    expect(normalizeRule(triaged.rule)).not.toBe(normalizeRule(reproposed.rule));
+    expect(shareAKey(triaged, reproposed)).toBe(true);
+  });
+
+  it('does NOT merge two different rules that cite the same file at different lines', () => {
+    // Both of these really were proposed against the same pair of files, so a
+    // path-only or fileset-only key would collapse them and lose one.
+    const importRule = {
+      rule: 'Import shared types using `import type`.',
+      evidencePath: 'client/src/app/agents/[id]/AgentEditor.tsx',
+      evidenceStartLine: 9,
+    };
+    const i18nRule = {
+      rule: 'UI text is retrieved through the `useTranslations` hook.',
+      evidencePath: 'client/src/app/agents/[id]/AgentEditor.tsx',
+      evidenceStartLine: 15,
+    };
+    expect(shareAKey(importRule, i18nRule)).toBe(false);
+  });
+
+  it('still matches on text alone when the row has no usable evidence', () => {
+    const a = { rule: 'Handlers resolve tenancy first.', evidencePath: null, evidenceStartLine: null };
+    const b = { rule: 'handlers   resolve tenancy first', evidencePath: null, evidenceStartLine: null };
+    expect(suppressionKeys(a)).toHaveLength(1);
+    expect(shareAKey(a, b)).toBe(true);
   });
 });
 

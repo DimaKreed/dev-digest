@@ -1,5 +1,5 @@
 import type { ConventionCandidate, SkillDraft } from '@devdigest/shared';
-import type { ConventionRow } from './ports.js';
+import type { ConventionRow, SuppressionInput } from './ports.js';
 import {
   MAX_CONFIG_FILE_CHARS,
   MAX_FILE_CHARS,
@@ -227,16 +227,10 @@ export function toDto(row: ConventionRow): ConventionCandidate {
 // ---------------------------------------------------------------------------
 
 /**
- * Key used to recognise a rule the user has already triaged.
+ * Text key for a rule: lowercase, flattened whitespace, no trailing punctuation.
  *
- * At `temperature: 0` over an unchanged repo the model re-proposes the same
- * rules in near-identical wording, so lowercasing and flattening whitespace and
- * trailing punctuation is enough to match them.
- *
- * It will NOT catch a genuine rephrasing — "Use async/await" and "Prefer
- * async/await over .then()" are different keys and the second would resurface
- * as pending. Matching that would need embeddings; this is the cheap 90% and is
- * deliberately not presented as more.
+ * On its own this matches only a near-identical re-proposal. Measured live, that
+ * is almost never what happens — see `suppressionKeys`.
  */
 export function normalizeRule(rule: string): string {
   return rule
@@ -244,6 +238,41 @@ export function normalizeRule(rule: string): string {
     .replace(/\s+/g, ' ')
     .replace(/[.;:,!]+$/, '')
     .trim();
+}
+
+/**
+ * Every key under which a candidate counts as "already triaged". A re-proposal
+ * is suppressed when it shares ANY key with an accepted or rejected row.
+ *
+ * Two keys, because rule TEXT alone does not work. `temperature: 0` does not
+ * pin wording: OpenRouter routes each scan to a different upstream, so the same
+ * convention comes back rephrased. Measured on this repo — 3 accepted + 1
+ * rejected row, re-scanned — text matching suppressed **0 of 4**, and all four
+ * returned as new `pending` rows:
+ *
+ *   accepted "Import shared types using `import type` from `@devdigest/shared`."
+ *   came back "Import shared types with `import type` from the `…` package."
+ *   rejected "UI text should be retrieved via the `useTranslations` hook…"
+ *   came back "Use `useTranslations` from `next-intl` for all user-facing…"
+ *
+ * So the second key is the EVIDENCE ANCHOR — the verified `path:line` the rule
+ * was proven at, which is a property of the code rather than of the phrasing and
+ * was byte-identical across re-scans for all four.
+ *
+ * The line is part of the key deliberately, not just the path: two genuinely
+ * different rules routinely cite the same FILES (here, an `import type` rule and
+ * a `useTranslations` rule both cited AgentEditor.tsx + ConfigTab.tsx), so a
+ * path- or fileset-only key would silently merge them and lose one.
+ *
+ * Still not semantic: a re-proposal that anchors on a different line AND is
+ * reworded resurfaces. That needs embeddings and is out of scope here.
+ */
+export function suppressionKeys(c: SuppressionInput): string[] {
+  const keys = [`rule:${normalizeRule(c.rule)}`];
+  if (c.evidencePath && c.evidenceStartLine !== null) {
+    keys.push(`anchor:${c.evidencePath}:${c.evidenceStartLine}`);
+  }
+  return keys;
 }
 
 /** Lowercase, non-alphanumerics to single dashes, no leading/trailing dash. */

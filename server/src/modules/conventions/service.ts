@@ -23,7 +23,7 @@ import {
   buildSamplePayload,
   buildSkillDraft,
   sliceLines,
-  normalizeRule,
+  suppressionKeys,
   toDto,
   verifyEvidence,
   type SampleFile,
@@ -210,7 +210,7 @@ export class ConventionsService {
       workspaceId,
       repoId,
       inserts,
-      normalizeRule,
+      suppressionKeys,
     );
     return {
       candidates: rows.map(toDto),

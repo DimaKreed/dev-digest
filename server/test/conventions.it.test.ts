@@ -361,6 +361,62 @@ d('conventions module', () => {
     await app.close();
   });
 
+  /**
+   * The case above re-proposes byte-identical text, which is NOT what a real
+   * scan does: OpenRouter routes each call to a different upstream, so the same
+   * convention comes back rephrased. Measured against the real extractor, text
+   * matching suppressed 0 of 4 triaged rules and every one resurfaced as
+   * `pending`. Suppression therefore keys on the verified evidence ANCHOR too —
+   * this fixture reworders the rule while citing the identical lines.
+   */
+  it('a rejected rule stays suppressed when the model rephrases it', async () => {
+    // Same rule, same anchors, different words — the live failure mode.
+    const reworded = {
+      candidates: [
+        {
+          ...EXTRACTION.candidates[0],
+          rule: 'Resolve tenancy in a route handler by calling getContext(container, req) first.',
+        },
+      ],
+    };
+    const app = await makeApp(
+      SAMPLES,
+      new MockLLMProvider('openrouter', {
+        structuredBySchema: { ConventionExtraction: reworded },
+      }),
+    );
+    await app.inject({
+      method: 'PATCH',
+      url: `/conventions/${conventionId}`,
+      payload: { status: 'rejected' },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/repos/${repoId}/conventions/extract`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    // It verifies, so it counts as verified — and is still suppressed, because
+    // the anchor it cites already belongs to a row the user rejected.
+    expect(body.stats.verified).toBe(1);
+    expect(body.stats.suppressed).toBe(1);
+    expect(body.candidates).toHaveLength(1);
+    expect(body.candidates[0]).toMatchObject({ id: conventionId, status: 'rejected' });
+    // The rejected row keeps its ORIGINAL wording — a suppressed proposal must
+    // not rewrite the rule the user triaged.
+    expect(body.candidates[0].rule).toBe(HONEST_RULE);
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/conventions/${conventionId}`,
+      payload: { status: 'pending' },
+    });
+    await app.close();
+  });
+
   it('PATCH triages a candidate and rejects an unknown status', async () => {
     const app = await makeApp(SAMPLES);
     const bad = await app.inject({
