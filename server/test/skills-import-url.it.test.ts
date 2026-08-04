@@ -9,6 +9,7 @@ import {
   MockGitHubClient,
   MockHttpFetcher,
   MockLLMProvider,
+  MockSecretsProvider,
 } from '../src/adapters/mocks.js';
 import type { SkillSafetyVerdict } from '@devdigest/shared';
 
@@ -69,8 +70,14 @@ d('POST /skills/import/url', () => {
         git: new MockGitClient(),
         github: new MockGitHubClient(),
         httpFetcher: opts.http,
-        // No `llm` override ⇒ container.llm() throws ConfigError for every
-        // provider, which is the keyless install.
+        // Keylessness is DECLARED here, not inherited from the environment. An
+        // empty MockSecretsProvider returns undefined for every key, so
+        // container.llm() raises ConfigError for every id in
+        // SAFETY_PROVIDER_ORDER. Relying on `.env` instead made this file
+        // ambient-dependent: the moment `openrouter` joined that order, the
+        // "keyless install" case found the dev box's real OPENROUTER_API_KEY and
+        // made a live network call, returning a verdict where null was expected.
+        secrets: new MockSecretsProvider(),
         ...(opts.llm ? { llm: { openai: opts.llm } } : {}),
       },
     });

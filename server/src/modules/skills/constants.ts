@@ -85,8 +85,16 @@ export const SAFETY_SCHEMA_NAME = 'SkillSafetyVerdict';
 /**
  * Providers tried in order. First one with a configured key classifies; none
  * configured ⇒ the scan returns null and the UI says so.
+ *
+ * `openrouter` is last but load-bearing: `.env.example` ships `OPENAI_API_KEY`
+ * and `ANTHROPIC_API_KEY` empty, so on a box where only `OPENROUTER_API_KEY` is
+ * set — the common case here, since it is what every seeded agent uses — the
+ * first two entries both raise `ConfigError` and the scan would degrade to
+ * "could not be scanned" despite a usable model being available. Appending
+ * rather than prepending keeps the cheaper OpenAI classifier preferred wherever
+ * that key does exist.
  */
-export const SAFETY_PROVIDER_ORDER = ['openai', 'anthropic'] as const;
+export const SAFETY_PROVIDER_ORDER = ['openai', 'anthropic', 'openrouter'] as const;
 
 /** Body prefix sent to the classifier. An injection buried past this is itself a signal. */
 export const SAFETY_MAX_BODY_CHARS = 24_000;
