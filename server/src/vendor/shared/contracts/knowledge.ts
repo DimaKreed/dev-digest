@@ -175,9 +175,46 @@ export const SkillStats = z.object({
 export type SkillStats = z.infer<typeof SkillStats>;
 
 /**
- * What an uploaded .md/.zip yields BEFORE anything is written. The import route
- * that produces this performs no writes at all — saving is a separate, explicit
- * POST /skills after the user has read the body.
+ * Verdict of the prompt-injection scan run over an imported skill body.
+ *
+ * An imported skill is a stranger's text that will be concatenated into a
+ * reviewer's prompt, so it is classified BEFORE the user is offered a save
+ * button. The classifier only ever labels — it never follows what it reads, and
+ * the body reaches it wrapped in `<untrusted>`.
+ */
+export const SkillSafetyCategory = z.enum([
+  /** "ignore previous instructions", "you are now …", role/scope overrides */
+  'instruction_override',
+  /** asks to send repo content, diffs or findings somewhere */
+  'exfiltration',
+  /** asks to run commands, fetch URLs, or touch the filesystem */
+  'tool_abuse',
+  /** asks for keys, tokens, env vars or other secrets */
+  'secret_request',
+  /** base64/homoglyph/zero-width padding hiding the real payload */
+  'obfuscation',
+  /** not a review rule at all — off-topic filler */
+  'off_topic',
+]);
+export type SkillSafetyCategory = z.infer<typeof SkillSafetyCategory>;
+
+export const SkillSafetyVerdict = z.object({
+  verdict: z.enum(['safe', 'suspicious', 'unsafe']),
+  summary: z.string(),
+  reasons: z.array(
+    z.object({
+      /** Verbatim excerpt from the body, so the user can judge for themselves. */
+      quote: z.string(),
+      category: SkillSafetyCategory,
+    }),
+  ),
+});
+export type SkillSafetyVerdict = z.infer<typeof SkillSafetyVerdict>;
+
+/**
+ * What an uploaded .md/.zip — or a fetched URL — yields BEFORE anything is
+ * written. The import routes that produce this perform no writes at all —
+ * saving is a separate, explicit POST /skills after the user has read the body.
  */
 export const SkillImportPreview = z.object({
   name: z.string(),
@@ -199,6 +236,12 @@ export const SkillImportPreview = z.object({
       reason: z.enum(['executable', 'not_markdown', 'unused_markdown']),
     }),
   ),
+  /**
+   * Null when the scan could not run (no provider key configured). The app boots
+   * with zero API keys, so "unscanned" is a real state the UI must show as such
+   * rather than silently presenting an unchecked body as clean.
+   */
+  safety: SkillSafetyVerdict.nullish(),
 });
 export type SkillImportPreview = z.infer<typeof SkillImportPreview>;
 
@@ -212,15 +255,97 @@ export const CommunitySkill = z.object({
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
 
 // ---- Conventions ----
+
+/** Triage state. Only `accepted` candidates are merged into a generated skill. */
+export const ConventionStatus = z.enum(['pending', 'accepted', 'rejected']);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
+// Fixed taxonomy — the extractor prompt offers exactly these and nothing else,
+// so the model cannot invent a category and the UI can style each one. The DB
+// column is plain `text` (Drizzle's `enum` emits no CHECK), so widening this
+// needs no migration — but it DOES need the same edit in the other copy of
+// vendor/shared and in db/schema/knowledge.ts.
+export const ConventionCategory = z.enum([
+  'naming',
+  'error-handling',
+  'async',
+  'imports',
+  'structure',
+  'api-design',
+  'testing',
+  'typing',
+  'logging',
+  'data-access',
+]);
+export type ConventionCategory = z.infer<typeof ConventionCategory>;
+
+/**
+ * A house-rule candidate whose evidence has already survived code verification.
+ *
+ * Everything here is grounded: the model proposes, but a candidate only reaches
+ * the client once the server has opened each cited file in the clone and matched
+ * the snippet verbatim (modulo whitespace). `occurrences` is therefore a COUNTED
+ * fact, not a model estimate — and it is always >= 2, because a pattern seen in
+ * one file is a coincidence rather than a convention.
+ */
 export const ConventionCandidate = z.object({
   id: z.string(),
   rule: z.string(),
+  category: ConventionCategory,
+  /** Primary (first verified) occurrence — what the card shows and links to. */
   evidence_path: z.string(),
   evidence_snippet: z.string(),
+  /** Real 1-based lines, recomputed from the match — not the model's guess. */
+  evidence_start_line: z.number().int().positive(),
+  evidence_end_line: z.number().int().positive(),
+  /** Every verified path, primary first. Length === `occurrences`. */
+  evidence_files: z.array(z.string()),
+  occurrences: z.number().int().min(2),
   confidence: z.number().min(0).max(1),
-  accepted: z.boolean(),
+  status: ConventionStatus,
+  /** Set once this candidate has been merged into a generated skill. */
+  skill_id: z.string().nullable(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+/**
+ * The extractor's own scorecard for one scan. Published so the UI (and the
+ * write-up) can show how much the model proposed versus how much survived
+ * verification — the drop reasons are the honest quality signal.
+ */
+export const ExtractionStats = z.object({
+  sampled_files: z.number().int(),
+  config_files: z.array(z.string()),
+  proposed: z.number().int(),
+  verified: z.number().int(),
+  /** Cited a path we never sampled — a hallucinated file. */
+  dropped_no_file: z.number().int(),
+  /** File existed, but the quoted snippet is not in it. */
+  dropped_no_snippet: z.number().int(),
+  /** Verified, but in fewer than two distinct files. */
+  dropped_single_occurrence: z.number().int(),
+  /** Survived verification, but you have already accepted or rejected it. */
+  suppressed: z.number().int(),
+  provider: z.string(),
+  model: z.string(),
+  cost_usd: z.number(),
+});
+export type ExtractionStats = z.infer<typeof ExtractionStats>;
+
+/**
+ * Merged markdown for the skill the accepted candidates would become, rendered
+ * server-side but written NOWHERE. The client shows it in an editable modal and
+ * then POSTs to the normal POST /skills — which is what keeps the conventions
+ * module free of any dependency on the skills module.
+ */
+export const SkillDraft = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: z.literal('convention'),
+  body: z.string(),
+  evidence_files: z.array(z.string()),
+});
+export type SkillDraft = z.infer<typeof SkillDraft>;
 
 // ---- Agents ----
 // 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a

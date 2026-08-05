@@ -6,6 +6,7 @@ import type {
   CodeIndex,
   Embedder,
   LLMProvider,
+  HttpFetcher,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
 import type { Db } from '../db/client.js';
@@ -28,6 +29,7 @@ import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
+import { GuardedHttpFetcher } from '../adapters/http/fetcher.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 
 /**
@@ -51,6 +53,8 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** Outbound HTTP behind the SSRF guard — tests inject a fetcher with no network. */
+  httpFetcher?: HttpFetcher;
 }
 
 export class Container {
@@ -76,6 +80,7 @@ export class Container {
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
+  private _httpFetcher?: HttpFetcher;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -122,6 +127,17 @@ export class Container {
     if (this.overrides.depgraph) return this.overrides.depgraph;
     this._depgraph ??= new DepCruiseGraph();
     return this._depgraph;
+  }
+
+  /**
+   * Outbound HTTP for user-supplied URLs (skill import). The SSRF guard, the
+   * 256 KB cap, the timeout and the redirect policy all live in the adapter —
+   * a module that called `fetch` directly would have none of them.
+   */
+  get httpFetcher(): HttpFetcher {
+    if (this.overrides.httpFetcher) return this.overrides.httpFetcher;
+    this._httpFetcher ??= new GuardedHttpFetcher();
+    return this._httpFetcher;
   }
 
   /** Token counter (js-tiktoken) for the repo-map budget search. */

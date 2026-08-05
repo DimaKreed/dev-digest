@@ -111,6 +111,24 @@ that `scripts/dev.sh:38` itself suggests — also works, because self-management
 (events 3033 + 3077).
 _2026-08-03_
 
+**Counterpart — that "always use `corepack pnpm`" habit corrupts `reviewer-core/` and `e2e/`, which are
+npm packages.** Running `corepack pnpm exec tsx some-script.ts` with the shell's cwd left in
+`reviewer-core/` triggers pnpm's dependency-status check, which decides the npm-installed
+`node_modules` is foreign and starts relocating it: `[WARN] Moving openai that was installed by a
+different package manager to "node_modules/.ignored"` for `openai`, `zod`, `tsx`, `typescript`,
+`vitest` and `@types/node`, then dying half-way on `[EPERM] EPERM: operation not permitted, rename
+'...\reviewer-core\node_modules\openai' -> '...\.ignored\openai'`. It leaves the package unbuildable
+— `tsc` and `vitest` simply gone.
+**Rule:** the per-directory package manager in root `CLAUDE.md` is not only about installs — it
+governs `exec` too. Always pin the directory in the same command (`cd server && corepack pnpm exec …`)
+rather than relying on the shell's inherited cwd, which drifts across calls. Recovery is
+non-destructive and does not need a reinstall: move each entry back out of `node_modules/.ignored/`
+(including `@types/node`, which is nested), `rmdir` `.ignored`, then confirm with
+`cd reviewer-core && npm run typecheck && npm test`. `git status` should show no `node_modules` churn
+— it is gitignored, so the damage is invisible to git and will only surface as a mysteriously broken
+package.
+_2026-08-04_
+
 ### A repo script that shells out to a unix-only binary silently excludes the Windows dev box
 **Symptom:** `scripts/make-skill-sample.sh` died with `zip: command not found`. Git Bash ships no
 `zip`, and Windows is a first-class dev environment in this repo — the PR gate itself
@@ -127,6 +145,18 @@ _2026-08-03_
 ## Session Notes
 
 ## Open Questions
+
+### Why did the extractor's anchor-verification rate collapse mid-session, and is it purely provider-side?
+On 2026-08-04 a scan of dev-digest returned `verified: 6, dropped_no_snippet: 0`. Hours later, the
+same repo and the same code returned `verified: 2/1/0` with **8–11** evidence items failing
+`verifyEvidence`. Ruled out: the prompt — two scans on the committed prompt dropped 8 and 11, two on
+the reworded one dropped 11 and 6, indistinguishable. The remaining suspect is which upstream
+OpenRouter routes to (see `reviewer-core/insights.md`), since a provider that paraphrases rather than
+copies a line fails every anchor. `ExtractionStats` records `provider: 'openrouter'` but **not the
+upstream** that served the call, so this cannot currently be confirmed from a scan's own output.
+Threading OpenRouter's response `provider` field into `ExtractionStats` would make the correlation
+measurable — worth doing before tuning the prompt or the gate in response to a low yield.
+_2026-08-04_
 
 ### Will corepack's vendored `fastlist-*.exe` hit the same Smart App Control block as `@pnpm/exe` did?
 `%LOCALAPPDATA%\node\corepack\v1\pnpm\<version>\dist\vendor\fastlist-0.3.0-{x64,x86}.exe` are both

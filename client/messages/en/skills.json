@@ -138,7 +138,9 @@
     "save": "Save",
     "saving": "Saving…",
     "saved": "Saved (v{version})",
-    "savedToast": "Saved as v{version}"
+    "savedToast": "Saved as v{version}",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "tokensEstimate": "~{count} tokens"
   },
   "previewTab": {
     "title": "Preview",
@@ -183,7 +185,7 @@
   },
   "import": {
     "title": "Import a skill",
-    "subtitle": "Upload a Markdown file or a .zip archive",
+    "subtitle": "Upload a Markdown file or a .zip archive, or fetch one from a URL",
     "dropzone": "Drop a .md or .zip here, or click to choose",
     "choosing": "Reading…",
     "extracted": "Extracted {file}",
@@ -200,6 +202,41 @@
     "save": "Save skill",
     "saving": "Saving…",
     "saved": "Imported \"{name}\" — disabled until you enable it.",
-    "failed": "Import failed"
+    "failed": "Import failed",
+    "tabs": {
+      "file": "From file",
+      "url": "From URL"
+    },
+    "url": {
+      "label": "Skill URL",
+      "placeholder": "https://github.com/acme/skills/blob/main/SKILL.md",
+      "hint": "https only. The URL is fetched server-side, capped at 256 KB, and never followed to a private or internal address. A GitHub file page is rewritten to its raw URL for you.",
+      "fetch": "Fetch",
+      "fetching": "Fetching…",
+      "fetched": "Fetched {file}"
+    },
+    "safety": {
+      "title": "Injection scan",
+      "verdict": {
+        "safe": "No injection attempt found",
+        "suspicious": "Worth a closer read",
+        "unsafe": "Injection attempt found"
+      },
+      "reasonsTitle": "{count, plural, one {# passage flagged} other {# passages flagged}}",
+      "category": {
+        "instruction_override": "tries to override the agent's instructions",
+        "exfiltration": "asks for repo content to be sent somewhere",
+        "tool_abuse": "asks the agent to run commands or fetch URLs",
+        "secret_request": "asks for keys, tokens or environment variables",
+        "obfuscation": "hides its payload behind an encoding",
+        "off_topic": "is not review guidance"
+      },
+      "unscanned": {
+        "title": "Could not be scanned",
+        "body": "No model provider is configured, so this body was not checked for prompt injection. That is not the same as being clean — read it yourself before you enable it."
+      },
+      "unsafeGate": "I have read the flagged passages and understand the risk",
+      "unsafeBlocked": "Saving is disabled until you confirm you have read the flagged passages."
+    }
   }
 }

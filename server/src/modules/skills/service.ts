@@ -8,7 +8,15 @@ import type {
   SkillVersion,
 } from '@devdigest/shared';
 import { SkillsRepository } from './repository.js';
-import { extractSkill, toSkillDto, toSkillVersionDto } from './helpers.js';
+import {
+  extractSkill,
+  fileNameFromUrl,
+  SkillImportError,
+  toSkillDto,
+  toSkillVersionDto,
+} from './helpers.js';
+import { scanSkillBody } from './safety.js';
+import { MAX_FETCHED_BYTES, URL_FETCH_TIMEOUT_MS } from './constants.js';
 
 /**
  * Skills service.
@@ -26,6 +34,7 @@ export interface CreateSkillInput {
   body: string;
   enabled?: boolean;
   note?: string;
+  evidenceFiles?: string[];
 }
 
 export interface UpdateSkillInput {
@@ -71,6 +80,7 @@ export class SkillsService {
       body: input.body,
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
       ...(input.note !== undefined ? { note: input.note } : {}),
+      ...(input.evidenceFiles !== undefined ? { evidenceFiles: input.evidenceFiles } : {}),
     });
     return toSkillDto(row, this.tokens(row.body), 0);
   }
@@ -162,8 +172,50 @@ export class SkillsService {
    * the read path write-free is the whole point — an import can't quietly land
    * a stranger's instructions in an agent's prompt.
    */
-  previewImport(fileName: string, bytes: Uint8Array): SkillImportPreview {
-    const extracted = extractSkill(fileName, bytes);
-    return { ...extracted, tokens: this.tokens(extracted.body) };
+  async previewImport(fileName: string, bytes: Uint8Array): Promise<SkillImportPreview> {
+    return this.toPreview(extractSkill(fileName, bytes));
+  }
+
+  /**
+   * Fetch a skill from a URL and preview it. Same no-write guarantee as the
+   * file path, and the same parser — `extractSkill` is the only thing in this
+   * codebase that turns bytes into a skill.
+   *
+   * The URL is attacker-controlled, so the fetch goes through the `HttpFetcher`
+   * port: https only, no private/loopback/link-local target, ≤256 KB, ≤10 s,
+   * redirects re-validated per hop. Anything the guard refuses surfaces here as
+   * a `SkillImportError`, which the route maps to a 400 — the adapter's own
+   * error type deliberately doesn't cross into ring 2 or ring 4.
+   */
+  async previewImportUrl(url: string): Promise<SkillImportPreview> {
+    let text: string;
+    try {
+      const res = await this.container.httpFetcher.fetchText(url, {
+        maxBytes: MAX_FETCHED_BYTES,
+        timeoutMs: URL_FETCH_TIMEOUT_MS,
+      });
+      text = res.text;
+    } catch (err) {
+      throw new SkillImportError(err instanceof Error ? err.message : 'Could not fetch that URL');
+    }
+    if (!text.trim()) throw new SkillImportError('That URL returned an empty document');
+    return this.toPreview(extractSkill(fileNameFromUrl(url), new TextEncoder().encode(text)));
+  }
+
+  /**
+   * Token count + injection scan, shared by both import routes.
+   *
+   * `safety` is null — not `safe` — when no provider key is configured or the
+   * classifier errors. The contract makes that a distinct state so the UI can
+   * say "could not be scanned" instead of implying a clean bill of health.
+   */
+  private async toPreview(
+    extracted: ReturnType<typeof extractSkill>,
+  ): Promise<SkillImportPreview> {
+    return {
+      ...extracted,
+      tokens: this.tokens(extracted.body),
+      safety: await scanSkillBody(this.container, extracted.body),
+    };
   }
 }

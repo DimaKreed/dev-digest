@@ -31,6 +31,9 @@ import type {
   AuthWorkspace,
   SecretsProvider,
   SecretKey,
+  HttpFetcher,
+  HttpFetchOptions,
+  HttpTextResponse,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
 
@@ -326,5 +329,39 @@ export class MockSecretsProvider implements SecretsProvider {
   constructor(private secrets: Partial<Record<string, string>> = {}) {}
   async get(key: SecretKey): Promise<string | undefined> {
     return this.secrets[key as string];
+  }
+}
+
+// ---------- Mock HttpFetcher ----------
+export interface MockHttpFetcherOptions {
+  /** Body returned for any URL with no `byUrl` entry. */
+  text?: string;
+  contentType?: string;
+  /** Per-URL bodies, for tests that fetch more than one. */
+  byUrl?: Record<string, string>;
+  /** When set, every call rejects with this message (simulates a blocked URL). */
+  error?: string;
+}
+
+/**
+ * No network at all — the SSRF guard is unit-tested against `adapters/http/ssrf.ts`
+ * directly, so route tests only need the bytes. `requested` records the URL the
+ * service actually asked for, which is how the github→raw rewrite is asserted.
+ */
+export class MockHttpFetcher implements HttpFetcher {
+  public requested: string[] = [];
+
+  constructor(private opts: MockHttpFetcherOptions = {}) {}
+
+  async fetchText(url: string, _opts?: HttpFetchOptions): Promise<HttpTextResponse> {
+    this.requested.push(url);
+    if (this.opts.error) throw new Error(this.opts.error);
+    const text = this.opts.byUrl?.[url] ?? this.opts.text ?? '# Mock skill\n\nBe strict.';
+    return {
+      url,
+      text,
+      contentType: this.opts.contentType ?? 'text/markdown; charset=utf-8',
+      bytes: new TextEncoder().encode(text).length,
+    };
   }
 }

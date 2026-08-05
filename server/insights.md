@@ -11,7 +11,53 @@ Maintained by the [engineering-insights](../.claude/skills/engineering-insights/
 
 ## What Doesn't Work
 
+### De-duplicating model output by its TEXT does not work here — the model rewords the same claim every call
+**Symptom:** re-scan preservation keyed "already triaged" on `normalizeRule` (lowercase, collapse
+whitespace, strip trailing punctuation). Against the real extractor it suppressed **0 of 4** triaged
+rules and `stats.suppressed` read 0 while 4 of 6 new `pending` rows were re-wordings of rules the
+user had already accepted or rejected — including a **rejected** one coming back as pending:
+
+- accepted `Import shared types using \`import type\` from \`@devdigest/shared\`.`
+  → returned as `Import shared types with \`import type\` from the \`…\` package.`
+- rejected `UI text should be retrieved via the \`useTranslations\` hook…`
+  → returned as `Use \`useTranslations\` from \`next-intl\` for all user-facing strings…`
+
+`temperature: 0` is not the guarantee it looks like: OpenRouter routes each scan to a different
+upstream, so wording drifts between runs even at fixed inputs.
+**Rule:** key on something the model derives from the CODE, not on its prose. `suppressionKeys`
+(`src/modules/conventions/helpers.ts`) matches on either the normalised rule text **or** the verified
+evidence anchor `path:line`, which was byte-identical across re-scans in all four cases. Include the
+LINE, not just the path or the file set: an `import type` rule and a `useTranslations` rule both cited
+`AgentEditor.tsx` + `ConfigTab.tsx`, so a fileset-only key silently merges two distinct rules and
+drops one. This generalises to any "did the model already tell me this?" check in this repo.
+Regression guard: `test/conventions.it.test.ts` → "a rejected rule stays suppressed when the model
+rephrases it" — note the older sibling case passes either way because its mock re-proposes
+byte-identical text, which is exactly the case that does not occur in practice.
+_2026-08-04_
+
 ## Codebase Patterns
+
+### `no-cross-module` blocks reading another module's helper, so a per-feature model override is read from the `settings` TABLE instead
+**Symptom:** `modules/conventions/service.ts` needs the workspace's `feature_models.conventions`
+override, which `modules/settings/feature-models.ts` already resolves — but importing it trips
+depcruise's `no-cross-module` rule (`.dependency-cruiser.cjs:83`), verified by probe.
+**Rule:** a new module needing a per-feature model duplicates the resolution against its own
+repository rather than importing the settings helper: read the `settings` row, `safeParse` it with
+`FeatureModelChoice`, fall back to the `FEATURE_MODELS` registry default. See `resolveModel` in
+`src/modules/conventions/service.ts:349` — the duplication is deliberate and commented as such.
+_2026-08-04_
+
+### `server/` now has its own first `db.transaction()`, so the onion skill's "expect 0 today" probe is stale
+**Symptom:** `.claude/skills/onion-architecture/SKILL.md` states "There are currently **zero**
+`.transaction(` calls in `server/`" and its H9 grep probe reads `rg -n '\.transaction\(' src` —
+**expect 0 today**. That is no longer true: `ConventionsRepository.rescanForRepo`
+(`src/modules/conventions/repository.ts:164`) wraps its read-existing / delete-pending / insert-fresh
+sequence in one, which is the correct call for a multi-write use case (H9).
+**Rule:** treat that probe as "every hit must be a deliberate transaction boundary in a repository",
+not as "any hit is a violation". When adding one, keep it in the repository and let the service stay
+unaware of the handle — `rescanForRepo` takes a pure key function and returns rows, so no Drizzle type
+reaches ring 2.
+_2026-08-04_
 
 ### `db:seed` creates no `agent_runs`, so every run-derived surface is empty on a fresh DB
 **Symptom:** with cost wired end-to-end, the PR list's COST column still showed `—` on every row and

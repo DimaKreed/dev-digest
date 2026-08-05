@@ -45,7 +45,15 @@ export function SelectInput({
           const v = typeof o === "string" ? o : o.value;
           const l = typeof o === "string" ? o : o.label;
           return (
-            <option key={v} value={v}>
+            // The popup is painted by the OS, so it ignores the wrapper's
+            // styling. `color-scheme` on :root does most of the work; these two
+            // properties are the only ones an <option> reliably honours, and
+            // they keep the list readable where the parent is transparent.
+            <option
+              key={v}
+              value={v}
+              style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}
+            >
               {l}
             </option>
           );

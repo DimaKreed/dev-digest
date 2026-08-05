@@ -10,17 +10,89 @@
     "runExtraction": "Run extraction",
     "extractionFailed": "Extraction failed",
     "loadError": "Could not load conventions.",
+    "notIndexed": "This repo has not been indexed yet. Run indexing before extracting conventions.",
+    "lastScan": "last scan {when}",
+    "detectedFrom": "Detected from {count, plural, one {# sample file} other {# sample files}}",
     "empty": {
       "title": "No conventions extracted yet",
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
       "cta": "Run extraction"
     },
-    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
+    "emptyAfterScan": {
+      "title": "No conventions survived verification",
+      "body": "Every candidate the model proposed was dropped — either it cited a file we never sampled, quoted code that is not there, or appeared in only one file. See the scan report below."
+    },
+    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files",
+    "acceptedCount": "{accepted} of {total} accepted",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "createSkill": "Create skill",
+    "exportPlugin": "Export as Claude Code plugin",
+    "exportingPlugin": "Packaging…",
+    "exportFailed": "Could not package the plugin."
   },
   "card": {
     "confidence": "Confidence",
     "accepted": "Accepted",
     "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "acceptAsSkill": "Accept as Skill",
+    "accept": "Accept",
+    "reject": "Reject",
+    "rejected": "Rejected",
+    "edit": "Edit rule",
+    "save": "Save",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "occurrences": "{count, plural, one {# file} other {# files}}",
+    "seenIn": "Seen in {count, plural, one {# file} other {# files}}",
+    "openOnGitHub": "Open on GitHub",
+    "copySnippet": "Copy snippet",
+    "linkedToSkill": "In skill",
+    "category": {
+      "naming": "naming",
+      "error-handling": "error handling",
+      "async": "async",
+      "imports": "imports",
+      "structure": "structure",
+      "api-design": "api design",
+      "testing": "testing",
+      "typing": "typing",
+      "logging": "logging",
+      "data-access": "data access"
+    }
+  },
+  "stats": {
+    "title": "Scan report",
+    "hide": "Hide report",
+    "show": "Show report",
+    "sampledFiles": "Sampled files",
+    "configFiles": "Config files",
+    "proposed": "Proposed by model",
+    "verified": "Survived verification",
+    "droppedNoFile": "Dropped — cited a file we never sampled",
+    "droppedNoSnippet": "Dropped — cited line not found in the file",
+    "droppedSingleOccurrence": "Dropped — seen in only one file",
+    "model": "Model",
+    "cost": "Cost",
+    "suppressed": "Skipped — already accepted or rejected by you"
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "mergedFrom": "Merged from {count, plural, one {# accepted convention} other {# accepted conventions}} in {repo}. Everything below is editable before you save.",
+    "name": "Name",
+    "description": "Description",
+    "type": "Type",
+    "enabled": "Enabled",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "body": "Skill body",
+    "unsaved": "unsaved",
+    "tokens": "{count} tokens",
+    "footerNote": "Saved as v1 · added to Skills Lab",
+    "cancel": "Cancel",
+    "submit": "Create skill",
+    "submitting": "Creating…",
+    "created": "Skill created and linked to {count, plural, one {# convention} other {# conventions}}.",
+    "failed": "Could not create the skill.",
+    "nothingAccepted": "Accept at least one convention first."
   }
 }
