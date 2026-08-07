@@ -73,3 +73,7 @@ memory, skills, compose) are **intentional scaffolding, not dead code**. Never c
   — routing, quality bar and entry format for the files above
 - [.claude/skills/onion-architecture/SKILL.md](.claude/skills/onion-architecture/SKILL.md)
   — ring model and layering rules for `server/` + `reviewer-core/`, enforced by `pnpm arch`
+- [.claude/skills/feature-workflow/SKILL.md](.claude/skills/feature-workflow/SKILL.md)
+  — the subagent chain for a large change, its artifact hand-offs and its per-run trace, plus the
+  gate for when a task is too small to earn one. Agent roster in
+  [.claude/agents/README.md](.claude/agents/README.md)

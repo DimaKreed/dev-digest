@@ -1,4 +1,11 @@
-import type { CiFailOn, Finding, GitHubReviewPayload, Review, UnifiedDiff } from '@devdigest/shared';
+import type {
+  CiFailOn,
+  Finding,
+  GitHubReviewPayload,
+  Review,
+  UnifiedDiff,
+  Verdict,
+} from '@devdigest/shared';
 import { buildLineIndex } from '../grounding.js';
 
 /**
@@ -21,6 +28,13 @@ const SEV_EMOJI: Record<string, string> = {
 
 /** Severity rank (higher = worse) for gate comparisons. */
 export const SEV_RANK: Record<string, number> = { SUGGESTION: 1, WARNING: 2, CRITICAL: 3 };
+
+/** Verdict → GitHub review event. Same decision, two vocabularies. */
+const VERDICT_EVENT: Record<Verdict, GitHubReviewPayload['event']> = {
+  approve: 'APPROVE',
+  request_changes: 'REQUEST_CHANGES',
+  comment: 'COMMENT',
+};
 
 /** Minimum severity rank that trips the gate, per policy. `never` → unreachable. */
 export const FAIL_ON_MIN_RANK: Record<CiFailOn, number> = {
@@ -48,6 +62,24 @@ export function gateTriggered(findings: Finding[], failOn: CiFailOn): boolean {
 export function countBlockers(findings: Finding[], failOn: CiFailOn): number {
   const min = FAIL_ON_MIN_RANK[failOn];
   return findings.reduce((n, f) => n + ((SEV_RANK[f.severity] ?? 0) >= min ? 1 : 0), 0);
+}
+
+/**
+ * Deterministic verdict from the findings + the gate policy — NOT the model's
+ * self-reported `verdict`, which drifts the same way its self-reported score does
+ * (we have observed `request_changes` returned with zero findings and a summary
+ * saying "no issues found"; see docs/agent-prompts/README.md).
+ *
+ * This is the single definition of the gate outcome: `toReviewPayload` maps it to
+ * the GitHub review event, `reviewPullRequest` puts it on the Review, and
+ * `countBlockers` counts the findings that tripped it — so the verdict, the score,
+ * the blocker count and the posted event can never disagree.
+ *
+ * No findings → `approve`; gate tripped → `request_changes`; otherwise `comment`.
+ */
+export function verdictFromFindings(findings: Finding[], failOn: CiFailOn): Verdict {
+  if (findings.length === 0) return 'approve';
+  return gateTriggered(findings, failOn) ? 'request_changes' : 'comment';
 }
 
 export interface ToReviewOptions {
@@ -151,14 +183,11 @@ export function toReviewPayload(review: Review, opts: ToReviewOptions = {}): Git
   const failOn = opts.failOn ?? 'critical';
   const lineIndex = opts.diff ? buildLineIndex(opts.diff) : null;
   const comments = inline ? inlineComments(review.findings, lineIndex) : [];
-  // Deterministic event from severities + gate policy (ignores model verdict):
-  // no findings → APPROVE; gate tripped → REQUEST_CHANGES; otherwise → COMMENT.
+  // Deterministic event from severities + gate policy (ignores the model's
+  // self-reported verdict) — the same rule `reviewPullRequest` puts on the Review,
+  // just in GitHub's vocabulary, so the posted event always matches the verdict.
   const event: GitHubReviewPayload['event'] =
-    review.findings.length === 0
-      ? 'APPROVE'
-      : gateTriggered(review.findings, failOn)
-        ? 'REQUEST_CHANGES'
-        : 'COMMENT';
+    VERDICT_EVENT[verdictFromFindings(review.findings, failOn)];
   return {
     body: composeBody(review.findings, event, title),
     event,

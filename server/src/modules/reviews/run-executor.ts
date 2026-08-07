@@ -213,6 +213,10 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // The engine derives the verdict from the grounded findings under this
+        // gate — the same policy `countBlockers` uses below, so the verdict and
+        // the blocker count can never describe different findings.
+        failOn: agent.ciFailOn,
         // Resolved skill bodies (NOT slugs) — the engine renders them as the
         // `## Skills / rules` section. Same omit-when-empty contract as below,
         // so an agent with no skills produces a byte-identical prompt to before.

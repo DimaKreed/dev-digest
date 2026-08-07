@@ -215,7 +215,7 @@ export class SkillsService {
     return {
       ...extracted,
       tokens: this.tokens(extracted.body),
-      safety: await scanSkillBody(this.container, extracted.body),
+      safety: await scanSkillBody({ llm: (p) => this.container.llm(p) }, extracted.body),
     };
   }
 }

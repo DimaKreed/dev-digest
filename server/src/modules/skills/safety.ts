@@ -1,8 +1,8 @@
 import { SkillSafetyVerdict, type LLMProvider } from '@devdigest/shared';
 import { wrapUntrusted } from '@devdigest/reviewer-core';
-import type { Container } from '../../platform/container.js';
 import { renderPrompt } from '../../platform/prompts.js';
 import { routeModel, type Provider } from '../../platform/model-router.js';
+import type { SkillSafetyDeps } from './ports.js';
 import {
   SAFETY_MAX_BODY_CHARS,
   SAFETY_MAX_TOKENS,
@@ -34,16 +34,16 @@ import {
 
 /**
  * First provider with a usable client wins. Resolution goes through
- * `container.llm(id)` rather than `container.secrets.get(...)` on purpose: that
+ * `deps.llm(id)` rather than `container.secrets.get(...)` on purpose: that
  * is the DI seam, so an injected mock provider works with no key present and a
  * real key on the dev box can't leak into a test.
  */
 async function resolveClassifier(
-  container: Container,
+  deps: SkillSafetyDeps,
 ): Promise<{ llm: LLMProvider; provider: Provider } | null> {
   for (const provider of SAFETY_PROVIDER_ORDER) {
     try {
-      return { llm: await container.llm(provider), provider };
+      return { llm: await deps.llm(provider), provider };
     } catch {
       // ConfigError — no key for this provider. Try the next one.
     }
@@ -57,10 +57,10 @@ async function resolveClassifier(
  * nothing anyway, and "we could not check this" is what the UI then shows.
  */
 export async function scanSkillBody(
-  container: Container,
+  deps: SkillSafetyDeps,
   body: string,
 ): Promise<SkillSafetyVerdict | null> {
-  const classifier = await resolveClassifier(container);
+  const classifier = await resolveClassifier(deps);
   if (!classifier) return null;
 
   try {

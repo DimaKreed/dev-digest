@@ -105,11 +105,16 @@ numbers and gates from what the model returns:
    everything CRITICAL turns every PR into a blocker. State plainly that speculative
    issues ("might be", "if not already handled") are at most `WARNING`.
 
-2. **Verdict semantics.** The model owns `verdict`, so it must be told the mapping:
-   `request_changes` ⇔ at least one CRITICAL; `comment` ⇔ only non-blocking
-   findings; `approve` ⇔ empty findings list. **No findings ⇒ approve.** Without
-   this, models default `verdict` arbitrarily (we have observed `request_changes`
-   returned with zero findings and a summary saying "no issues found").
+2. **Verdict semantics.** The engine **recomputes** `verdict` from the grounded
+   findings under the agent's `ci_fail_on` gate (`verdictFromFindings` in
+   `reviewer-core/src/output/to-review.ts`), exactly as it recomputes the score, so
+   the model's returned verdict is discarded. Still state the mapping in the prompt —
+   `request_changes` ⇔ at least one CRITICAL; `comment` ⇔ only non-blocking findings;
+   `approve` ⇔ empty findings list — because a model told the mapping picks
+   severities more consistently, and because the prompt should not contradict the
+   number that ends up on screen. Just don't rely on it: models default `verdict`
+   arbitrarily (we have observed `request_changes` returned with zero findings and a
+   summary saying "no issues found"), which is why it is derived rather than trusted.
 
 3. **Findings discipline.** No duplicate findings; no padding toward a count. There
    is no minimum or target — zero is a good answer. Models treat "return at most N

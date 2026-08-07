@@ -1,4 +1,5 @@
 import type {
+  CiFailOn,
   Finding,
   LLMProvider,
   PromptAssembly,
@@ -9,6 +10,7 @@ import type {
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
+import { verdictFromFindings } from '../output/to-review.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 
 /**
@@ -73,6 +75,12 @@ export interface ReviewInput {
   prDescription?: string;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
+  /**
+   * CI gate policy the verdict is derived from (default 'critical'). Pass the
+   * agent's `ci_fail_on` so the verdict, the blocker count and the posted GitHub
+   * event all agree; the model's self-reported verdict is ignored either way.
+   */
+  failOn?: CiFailOn;
   /** Override the structured-output retry budget. */
   maxRetries?: number;
   /** Override the map-reduce line threshold. */
@@ -201,11 +209,19 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit('result', `Citation grounding: ${grounding}`);
 
-  // Score is derived from the findings that SURVIVED grounding (not the model's
-  // self-reported number, and not the pre-grounding set) so the score, the
-  // findings list, and the deterministic event always agree.
+  // Score AND verdict are derived from the findings that SURVIVED grounding (not
+  // the model's self-reported numbers, and not the pre-grounding set) so the score,
+  // the verdict, the findings list, and the deterministic event always agree.
+  // Deriving only the score used to leave the verdict describing the pre-grounding
+  // set: drop every finding and the header still said "changes requested" over an
+  // empty list scored 100.
   return {
-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+    review: {
+      ...merged,
+      findings: ground.kept,
+      score: scoreFromFindings(ground.kept),
+      verdict: verdictFromFindings(ground.kept, input.failOn ?? 'critical'),
+    },
     grounding,
     dropped: ground.dropped,
     mode,

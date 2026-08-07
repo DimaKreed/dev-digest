@@ -38,7 +38,14 @@ const LinkSkillBody = z.object({
 
 export default async function conventionsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
-  const service = new ConventionsService(app.container);
+  // Composition seam: the container is a transport/root concern, so the service
+  // gets the four ports it actually uses (H7) rather than the whole world.
+  const service = new ConventionsService({
+    conventions: app.container.conventionsRepo,
+    repoIntel: app.container.repoIntel,
+    llm: (provider) => app.container.llm(provider),
+    git: app.container.git,
+  });
 
   app.post('/repos/:id/conventions/extract', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
