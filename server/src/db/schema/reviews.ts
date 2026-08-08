@@ -7,8 +7,10 @@ import {
   jsonb,
   timestamp,
   doublePrecision,
+  boolean,
   index,
 } from 'drizzle-orm/pg-core';
+import type { IntentSource } from '../../vendor/shared/contracts/intent';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
@@ -59,6 +61,10 @@ export const findings = pgTable('findings', {
   trifectaComponents: jsonb('trifecta_components').$type<string[]>(),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
   dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+  // Intent layer. Nullable: every row that predates the intent migration has
+  // neither, and an unlabelled finding is treated as in scope.
+  outOfScope: boolean('out_of_scope'),
+  scopeRationale: text('scope_rationale'),
 });
 
 export const prIntent = pgTable('pr_intent', {
@@ -68,6 +74,15 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  // Classifier provenance. All nullable — rows written before the intent layer
+  // shipped have none of it. `headSha` + `model` together are the reuse key:
+  // a stored classification is reused only on an exact match of both.
+  headSha: text('head_sha'),
+  model: text('model'),
+  confidence: doublePrecision('confidence'),
+  sources: jsonb('sources').$type<IntentSource[]>(),
+  missingContext: jsonb('missing_context').$type<string[]>(),
+  createdAt: now(),
 });
 
 export const prBrief = pgTable('pr_brief', {

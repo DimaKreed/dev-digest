@@ -8,6 +8,12 @@
 #
 # Linux only — testcontainers needs a Linux Docker daemon (Windows runners
 # don't provide one).
+#
+# reviewer-core/** is in the path filter for the same reason server-unit.yml has
+# it: server aliases ../reviewer-core/src at type-check AND run time, so these
+# tests drive the real engine. `reviews.it.test.ts` now asserts on the engine's
+# scope partition through the HTTP surface, so a reviewer-core-only change can
+# break this lane without touching a single file under server/.
 name: server integration
 
 on:
@@ -15,10 +21,12 @@ on:
     branches: [main]
     paths:
       - 'server/**'
+      - 'reviewer-core/**'
       - '.github/workflows/server-integration.yml'
   pull_request:
     paths:
       - 'server/**'
+      - 'reviewer-core/**'
       - '.github/workflows/server-integration.yml'
 
 permissions:

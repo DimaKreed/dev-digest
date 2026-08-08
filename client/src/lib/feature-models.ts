@@ -22,8 +22,11 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: "review_intent",
     label: "PR Review · Intent",
     description: "Derives a PR’s intent and scope before review.",
-    defaultProvider: "openai",
-    defaultModel: "gpt-4.1",
+    // Third mirror of this default — see the comment on `review_intent` in
+    // `vendor/shared/contracts/platform.ts`. Both vendor copies and this file
+    // must change together.
+    defaultProvider: "openrouter",
+    defaultModel: "deepseek/deepseek-v4-flash",
   },
   {
     id: "risk_brief",

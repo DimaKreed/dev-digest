@@ -4,7 +4,12 @@ import { waitForPrRuns } from './helpers/runs.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
-import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
+import {
+  MockLLMProvider,
+  MockEmbedder,
+  MockGitClient,
+  MockGitHubClient,
+} from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { Review } from '@devdigest/shared';
@@ -58,6 +63,16 @@ const REVIEW_FIXTURE: Review = {
       kind: 'finding',
     },
   ],
+};
+
+/** IntentClassification fixture for the pre-review classifier call. */
+const INTENT_FIXTURE = {
+  intent: 'Adds rate limiting to the public API endpoints.',
+  in_scope: ['rate limiting'],
+  out_of_scope: ['logging for the limiter'],
+  confidence: 0.7,
+  sources: [{ kind: 'pr_title', ref: '#482' }],
+  missing_context: [],
 };
 
 let repoSeq = 0;
@@ -117,8 +132,17 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       overrides: {
         embedder: new MockEmbedder(),
         git: new MockGitClient({ diff: DIFF }),
+        // A run now makes TWO structured calls: the intent classifier
+        // ('IntentClassification', on the review_intent feature model — openrouter
+        // by default) and the review itself ('Review', on the agent's provider).
+        // Both seams must be mocked or the classifier reaches the real network.
+        github: new MockGitHubClient(),
         llm: {
           [provider]: new MockLLMProvider(provider, { structured }),
+          openrouter: new MockLLMProvider('openai', {
+            structuredBySchema: { IntentClassification: INTENT_FIXTURE },
+            structured,
+          }),
         },
       },
     });
@@ -499,6 +523,125 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       // Nothing triaged yet ⇒ null, not 0.
       expect(stats.accept_rate).toBeNull();
       expect(stats.findings_by_category).toEqual([{ category: 'security', count: 1 }]);
+      await app.close();
+    });
+  });
+
+  /**
+   * Intent Layer — the classifier runs as pre-work, once per review request,
+   * on a DIFFERENT structured schema than the review itself.
+   */
+  describe('PR intent', () => {
+    async function runOnce(app: Awaited<ReturnType<typeof appWith>>, prId: string) {
+      const agent = (
+        await app.inject({
+          method: 'POST',
+          url: '/agents',
+          payload: { name: `IA-${repoSeq}`, provider: 'openai', model: 'gpt-4.1', system_prompt: 'x' },
+        })
+      ).json();
+      const body = (
+        await app.inject({ method: 'POST', url: `/pulls/${prId}/review`, payload: { agentId: agent.id } })
+      ).json();
+      const runs = await waitForPrRuns(pg.handle.db, prId, { expected: 1 });
+      const runId = body.runs[0].run_id as string;
+      const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+      return { runId, trace, runs };
+    }
+
+    it('derives the intent, injects it, persists it and reports its cost separately', async () => {
+      const app = await appWith(REVIEW_FIXTURE);
+      const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+
+      const { trace, runs } = await runOnce(app, pr.id);
+      expect(runs[0]!.status).toBe('done');
+
+      // The two structured calls are distinguished by schemaName, and the intent
+      // block reached the reviewer prompt inside its untrusted wrapper.
+      expect(trace.prompt_assembly.intent).toContain('Adds rate limiting');
+      expect(trace.prompt_assembly.user).toContain('## Derived intent & scope');
+      expect(trace.prompt_assembly.user).toContain('<untrusted source="intent">');
+
+      // Classifier usage is reported per-trace and kept OUT of the run's own cost.
+      expect(trace.stats.intent_tokens_in).toBe(100);
+      expect(trace.stats.intent_tokens_out).toBe(50);
+      expect(trace.stats.intent_cost_usd).toBe(0.001);
+      expect(trace.stats.cost_usd).toBe(0.001); // the review call alone
+      expect(trace.log.some((l: { msg: string }) => l.msg.includes('Deriving PR intent'))).toBe(true);
+
+      // Persisted, and readable through the endpoint with a server-derived `stale`.
+      const detail = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/intent` })).json();
+      expect(detail.status).toBe('ready');
+      expect(detail.stale).toBe(false);
+      expect(detail.head_sha).toBe('a1b2c3d4');
+      expect(detail.model).toBe('openrouter/deepseek/deepseek-v4-flash');
+      expect(detail.out_of_scope).toEqual(['logging for the limiter']);
+      expect(detail.confidence).toBe(0.7);
+      await app.close();
+    });
+
+    it('a classifier failure still yields a done run, with no intent in the prompt', async () => {
+      const app = await buildApp({
+        config: config(),
+        db: pg.handle.db,
+        overrides: {
+          embedder: new MockEmbedder(),
+          git: new MockGitClient({ diff: DIFF }),
+          github: new MockGitHubClient(),
+          llm: {
+            openai: new MockLLMProvider('openai', { structured: REVIEW_FIXTURE }),
+            // No IntentClassification fixture ⇒ the mock throws on the classifier
+            // call. Intent is enrichment: the review must still complete.
+            openrouter: new MockLLMProvider('openai', { structured: { nope: true } }),
+          },
+        },
+      });
+      const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+
+      const { trace, runs } = await runOnce(app, pr.id);
+      expect(runs[0]!.status).toBe('done');
+      expect(trace.prompt_assembly.intent).toBeNull();
+      expect(trace.prompt_assembly.user).not.toContain('## Derived intent & scope');
+      expect(trace.stats.intent_cost_usd).toBeNull();
+      expect(trace.stats.findings).toBe(1);
+
+      const detail = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/intent` })).json();
+      expect(detail.status).toBe('absent');
+      expect(detail.intent).toBe('');
+      await app.close();
+    });
+
+    it('GET does not derive while auto_derive_intent is off; POST derives regardless', async () => {
+      const app = await appWith(REVIEW_FIXTURE);
+      const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+
+      const before = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/intent` })).json();
+      expect(before.status).toBe('absent');
+      expect(
+        await pg.handle.db.select().from(t.prIntent).where(eq(t.prIntent.prId, pr.id)),
+      ).toHaveLength(0);
+
+      const derived = (await app.inject({ method: 'POST', url: `/pulls/${pr.id}/intent` })).json();
+      expect(derived.status).toBe('ready');
+      expect(derived.intent).toContain('rate limiting');
+      expect(derived.stale).toBe(false);
+      await app.close();
+    });
+
+    it('marks a stored intent stale once the PR head moves', async () => {
+      const app = await appWith(REVIEW_FIXTURE);
+      const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+      await app.inject({ method: 'POST', url: `/pulls/${pr.id}/intent` });
+
+      await pg.handle.db
+        .update(t.pullRequests)
+        .set({ headSha: 'deadbeef' })
+        .where(eq(t.pullRequests.id, pr.id));
+
+      const detail = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/intent` })).json();
+      expect(detail.stale).toBe(true);
+      expect(detail.head_sha).toBe('a1b2c3d4');
+      expect(detail.intent).toContain('rate limiting');
       await app.close();
     });
   });

@@ -50,10 +50,20 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
   },
   {
     id: 'review_intent',
+    // Cheap by design: the classifier reads only PR title/body, a linked issue,
+    // an in-repo plan and the changed-file list — never diff bodies — and its
+    // output is a short structured label, not a judgement about code. It also
+    // runs on the critical path of every review, so a slow expensive model here
+    // delays the first agent for no gain. Matches `conventions` / `onboarding`.
+    //
+    // This default is mirrored in THREE places: this file, its client copy, and
+    // `client/src/lib/feature-models.ts` (the client cannot import a runtime
+    // value out of vendor/shared). Change all three or the Settings picker
+    // advertises a default the server does not use.
     label: 'PR Review · Intent',
     description: 'Derives a PR’s intent and scope before review.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-4.1',
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
   {
     id: 'risk_brief',
@@ -94,6 +104,13 @@ export const SettingsKnown = z.object({
   density: z.enum(['regular', 'compact']).default('regular'),
   sync_to_folder: z.boolean().default(true),
   automatic_reviews: z.boolean().default(false),
+  /**
+   * Derive a PR's intent automatically when its page is opened, once per head
+   * SHA. OFF by default on purpose: it spends money on a GET, so the capability
+   * ships dormant and a fresh install pays nothing until the user opts in. With
+   * it off the intent is still derived as pre-work inside an explicit review run.
+   */
+  auto_derive_intent: z.boolean().default(false),
   /** Per-feature model overrides (provider+model), keyed by FeatureModelId. */
   feature_models: z.record(FeatureModelId, FeatureModelChoice).default({}),
 });

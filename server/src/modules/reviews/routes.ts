@@ -125,6 +125,39 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     return trace;
   });
 
+  // ---- PR intent (Intent Layer) -------------------------------------------
+  // GET is a READ that may, when `auto_derive_intent` is on and the stored row
+  // is missing/stale, kick off a BACKGROUND derivation and return immediately
+  // with status 'deriving'. It never awaits the model. See ReviewService.getIntent
+  // for why a write behind a GET was chosen here and how it is bounded.
+  //
+  // Deliberately on the PR-DETAIL endpoint only. Never call this from the PR
+  // list: that would fan out one paid classifier call per row.
+  //
+  // Rate-limited despite being a GET, precisely BECAUSE it can spend money: the
+  // client polls it every 3s while status is 'deriving', and a derivation that
+  // fails after the model call leaves the row untouched so the next GET retries.
+  // Looser than the POST — this is the normal page-open path, not an explicit ask.
+  app.get(
+    '/pulls/:id/intent',
+    { schema: { params: IdParams }, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.getIntent(workspaceId, req.params.id);
+    },
+  );
+
+  // Explicit (re-)derivation, regardless of the toggle. Same tight per-route
+  // limit as POST /pulls/:id/review — each call is a paid LLM request.
+  app.post(
+    '/pulls/:id/intent',
+    { schema: { params: IdParams }, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.deriveIntentNow(workspaceId, req.params.id);
+    },
+  );
+
   // ---- Reads --------------------------------------------------------------
   app.get('/pulls/:id/reviews', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(container, req);

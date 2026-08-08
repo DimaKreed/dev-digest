@@ -3,7 +3,8 @@
  * their arguments — no DB / network / `this`).
  */
 import type { Finding } from '@devdigest/shared';
-import type { FindingRow, PullRow, ReviewRow } from './repository.js';
+import type { FindingRow, PullRow } from './ports.js';
+import type { ReviewRow } from './repository.js';
 
 // reduceReviews + sliceDiff live in @devdigest/reviewer-core (pure engine logic
 // shared with the CI runner); re-exported here for backward-compatible imports.
@@ -46,6 +47,8 @@ export function findingRowToDto(row: FindingRow): ReviewDtoFinding {
     kind: (row.kind as Finding['kind']) ?? 'finding',
     trifecta_components: (row.trifectaComponents as Finding['trifecta_components']) ?? null,
     evidence: null,
+    out_of_scope: row.outOfScope,
+    scope_rationale: row.scopeRationale,
     review_id: row.reviewId,
     accepted_at: row.acceptedAt?.toISOString() ?? null,
     dismissed_at: row.dismissedAt?.toISOString() ?? null,

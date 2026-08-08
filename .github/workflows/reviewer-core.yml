@@ -4,6 +4,12 @@
 #
 # server/src/vendor/shared/** is in the path filter because reviewer-core
 # aliases @devdigest/shared to it at type-check time.
+#
+# client/src/vendor/shared/** is deliberately NOT here: reviewer-core resolves
+# @devdigest/shared to the SERVER copy only and has no copy of its own, so a
+# client-side contract edit cannot affect this lane. What a client-only edit can
+# do is silently diverge the two copies — that is a contract-lockstep problem,
+# guarded by the `diff` check in review, not by widening this trigger.
 name: reviewer-core
 
 on:

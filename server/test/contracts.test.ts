@@ -191,6 +191,50 @@ describe('AI contracts parse fixtures', () => {
     expect(() => PromptAssembly.parse(assembly)).not.toThrow();
     expect(PromptAssembly.parse(assembly).skills_tokens).toBeUndefined();
   });
+
+  // Third time on the same hazard: every trace written before the Intent Layer
+  // has no `intent_*` / `scope` key and no `prompt_assembly.intent`. `.nullable()`
+  // on any of them would break reading every pre-existing run_traces row.
+  it('RunStats accepts a legacy trace with no intent_* or scope keys', () => {
+    const stats = {
+      duration_ms: 8200,
+      tokens_in: 14820,
+      tokens_out: 1240,
+      cost_usd: 0.012,
+      findings: 3,
+      grounding: '3/3 passed',
+    };
+    expect(() => RunStats.parse(stats)).not.toThrow();
+    const parsed = RunStats.parse(stats);
+    expect(parsed.intent_tokens_in).toBeUndefined();
+    expect(parsed.intent_tokens_out).toBeUndefined();
+    expect(parsed.intent_cost_usd).toBeUndefined();
+    expect(parsed.scope).toBeUndefined();
+  });
+
+  it('PromptAssembly accepts a legacy trace with no intent key', () => {
+    const assembly = { system: 'You are a reviewer.', skills: null, user: '## Diff to review' };
+    expect(PromptAssembly.parse(assembly).intent).toBeUndefined();
+  });
+
+  // Findings round-trip through run_traces.trace AND through persisted rows
+  // written before out_of_scope existed — same reason, same fix.
+  it('Finding accepts a legacy document with no out_of_scope / scope_rationale', () => {
+    const finding = {
+      id: 'f1',
+      severity: 'WARNING',
+      category: 'bug',
+      title: 'off-by-one',
+      file: 'src/a.ts',
+      start_line: 4,
+      end_line: 4,
+      rationale: 'because',
+      confidence: 0.7,
+    };
+    expect(() => Finding.parse(finding)).not.toThrow();
+    expect(Finding.parse(finding).out_of_scope).toBeUndefined();
+    expect(Finding.parse(finding).scope_rationale).toBeUndefined();
+  });
 });
 
 describe('skill contracts', () => {

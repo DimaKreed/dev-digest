@@ -59,6 +59,21 @@ export const Finding = z.object({
   // Lethal-trifecta variant fields (present only when kind === 'lethal_trifecta')
   trifecta_components: z.array(TrifectaComponent).nullish(),
   evidence: z.array(TrifectaEvidence).nullish(),
+  // Intent-layer scope flag. `nullish`, NOT `nullable`: findings round-trip
+  // through the `run_traces.trace` jsonb and through persisted rows written
+  // before these keys existed, and those documents omit the key entirely.
+  out_of_scope: z
+    .boolean()
+    .nullish()
+    .describe(
+      'True when this finding is about work the PR deliberately excluded, per the derived intent shown above. Label honestly; never withhold a finding because it is out of scope.',
+    ),
+  scope_rationale: z
+    .string()
+    .nullish()
+    .describe(
+      'One short sentence justifying `out_of_scope`, quoting the part of the stated scope it falls outside. Omit when in scope.',
+    ),
 });
 export type Finding = z.infer<typeof Finding>;
 

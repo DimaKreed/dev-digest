@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { FormField, SearchableSelect, Icon } from "@devdigest/ui";
+import { FormField, SearchableSelect, Icon, Toggle } from "@devdigest/ui";
 import { useSettings, useUpdateSettings } from "../../../../../../../lib/hooks";
 import { useProviderModels } from "../../../../../../../lib/hooks/agents";
 import { toModelOptions } from "../../../../../../../lib/model-label";
@@ -26,6 +26,11 @@ export function SettingsModels() {
   const chosen = (settings?.feature_models ?? {}) as Partial<Record<FeatureModelId, FeatureModelChoice>>;
   const baseOptions = toModelOptions(models);
   const noModels = models !== undefined && models.length === 0;
+
+  // The Intent Layer's auto-derivation toggle. It governs the same feature as
+  // the `review_intent` picker below, so it lives beside it rather than in a
+  // section of its own. OFF by default: it spends money on a PR page open.
+  const autoDeriveIntent = settings?.auto_derive_intent === true;
 
   const setModel = (id: FeatureModelId, model: string) =>
     update.mutate({
@@ -62,6 +67,19 @@ export function SettingsModels() {
                 placeholder={t("models.search")}
               />
             </FormField>
+            {f.id === "review_intent" && (
+              <div style={s.row}>
+                <FormField
+                  label={t("models.autoDeriveIntent")}
+                  hint={t("models.autoDeriveIntentHint")}
+                >
+                  <Toggle
+                    on={autoDeriveIntent}
+                    onChange={(on) => update.mutate({ auto_derive_intent: on })}
+                  />
+                </FormField>
+              </div>
+            )}
           </div>
         );
       })}
