@@ -37,7 +37,14 @@ nothing to build and no dist to keep in sync.
 - Grounding is a mandatory gate — ungrounded findings are dropped silently, by design.
 - The score is recomputed by `scoreFromFindings` in [src/review/reduce.ts](src/review/reduce.ts)
   (0 findings ⇒ 100; penalties CRITICAL 35 / WARNING 12 / SUGGESTION 3, clamped 0–100).
-  **The model's self-reported score is ignored.** `verdict` is passed through as-is.
+  **The model's self-reported score is ignored.**
+- `verdict` is likewise recomputed, by `verdictFromFindings` in
+  [src/output/to-review.ts](src/output/to-review.ts), from the GROUNDED findings under the
+  agent's `ci_fail_on` gate (0 findings ⇒ `approve`; gate tripped ⇒ `request_changes`; else
+  `comment`). **The model's self-reported verdict is ignored.** That function is the single
+  definition of the gate outcome — `toReviewPayload` maps it to the GitHub event and
+  `countBlockers` counts what tripped it, so verdict / score / blockers / posted event can
+  never disagree. Don't reintroduce a second copy of the rule.
 - The output schema is enforced via strict `json_schema`, not described in the prompt.
   Changing the schema means changing the contract in `server/src/vendor/shared/`, not the prompt text.
 

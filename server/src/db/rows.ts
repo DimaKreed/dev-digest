@@ -17,3 +17,4 @@ export type FindingRow = typeof t.findings.$inferSelect;
 export type PullRow = typeof t.pullRequests.$inferSelect;
 export type AgentRunRow = typeof t.agentRuns.$inferSelect;
 export type ConventionRow = typeof t.conventions.$inferSelect;
+export type PrIntentRow = typeof t.prIntent.$inferSelect;

@@ -1,11 +1,14 @@
 ---
 name: react-testing-library
-description: "General-purpose React Testing Library guide with Vitest. Use when writing, reviewing, or setting up React component and hook tests. Covers project setup from scratch, RTL query priority, userEvent, async patterns, mocking strategies, and common anti-patterns. Applicable to any Vite + React project."
+description: "React Testing Library guide with Vitest, carrying the DevDigest client/ conventions where they differ from the general advice. Use when writing, reviewing, or setting up React component and hook tests. Covers RTL query priority, the interaction API this repo actually installs, async patterns, mocking strategies scoped per package, and common anti-patterns."
 ---
 
 # React Testing Library
 
-General-purpose guide for testing React components and hooks with React Testing Library (RTL) and Vitest. Project-agnostic — works with any Vite + React setup.
+Guide for testing React components and hooks with React Testing Library (RTL) and Vitest. The RTL
+fundamentals here — query priority, async handling, the anti-pattern catalog — hold anywhere. The
+passages marked **DevDigest** record what this repository actually installs and does; inside this
+repo they win over the general advice.
 
 ## Philosophy: Fewer Tests, Real Scenarios
 
@@ -20,27 +23,38 @@ General-purpose guide for testing React components and hooks with React Testing 
 ### The Testing Trophy (what to invest in)
 
 ```
-    E2E        ← Few: critical user journeys only (Playwright/Cypress)
-  Integration  ← MOST tests: components with real providers, MSW for APIs
+    E2E        ← Few: critical user journeys only
+  Integration  ← MOST tests: components with real providers, mocked data hooks
   Unit         ← Some: complex pure logic, utilities, formatters
-Static Analysis ← Always: TypeScript, ESLint
+Static Analysis ← Always: TypeScript
 ```
+
+The static-analysis layer is **`tsc` alone** in DevDigest. There is no ESLint, Biome or Prettier
+anywhere in the repo and no `lint` script — that is deliberate, root `CLAUDE.md` § Conventions
+forbids adding one, and `lint-tooling-introduced` is a CRITICAL check in the PR gate. Reach for
+`corepack pnpm typecheck`, never for a linter.
+
+The E2E layer is neither Playwright nor Cypress: `e2e/` drives the external agent-browser CLI over
+declarative `specs/NN-name.flow.json` files. See `e2e/CLAUDE.md`; it is out of this skill's scope.
 
 ---
 
 ## Setup from Scratch
 
-### 1. Install Dependencies
+### 1. Dependencies — never install one
 
-```bash
-npm install -D vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom
-```
+**Never run a package manager to add a testing dependency.** A missing dependency is a blocker to
+report, not a problem to solve: name the package, name the directory that would need it, say what
+the approach would have been, and stop. Which test stack a package uses is not the test author's
+call, and a package manager invoked in the wrong directory is destructive in this repo.
 
-Optional but recommended:
-```bash
-npm install -D msw                     # Network-level API mocking
-npm install -D @vitest/coverage-v8     # Code coverage
-```
+A complete RTL + Vitest stack is `vitest`, `@testing-library/react`, `@testing-library/jest-dom`
+and `jsdom`, with `@testing-library/user-event`, `msw` and `@vitest/coverage-v8` as optional
+extras.
+
+**DevDigest** already has the four required ones in `client/package.json` and deliberately has
+none of the three optional ones. Write tests against what is installed; steps 2–4 below are
+already done in `client/vitest.config.ts` and `client/src/test/setup.ts`.
 
 ### 2. Vitest Config
 
@@ -136,121 +150,121 @@ This is what a well-structured test file looks like. Each test walks through a r
 
 ```jsx
 // BlogList.test.jsx
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
-import { http, HttpResponse } from 'msw';
-import { setupServer } from 'msw/node';
-import BlogList from './BlogList';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 
-// --- MSW setup: mock the API at the network level ---
+// --- Fixture: a small factory local to this file.
+// Each client test file carries its own (see `finding()` in PRRow.test.tsx); promoting one
+// to a shared directory is a decision to announce, not a convenience to take.
 const blogs = [
-  { _id: '1', title: 'First Post', category: 'Technology', excerpt: 'About tech' },
-  { _id: '2', title: 'Second Post', category: 'Startup', excerpt: 'About startups' },
+  { id: '1', title: 'First Post', category: 'Technology', excerpt: 'About tech' },
+  { id: '2', title: 'Second Post', category: 'Startup', excerpt: 'About startups' },
 ];
 
-const server = setupServer(
-  http.get('/api/blogs', () => HttpResponse.json({ success: true, blogs })),
-);
+// --- The seam is the data hook, not the network. No MSW, no fetch stub.
+let listing = { data: blogs, isLoading: false, error: null };
+vi.mock('@/lib/hooks/blogs', () => ({ useBlogs: () => listing }));
 
-beforeAll(() => server.listen());
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+// Imported after the fixture and the mock, the way PRRow.test.tsx and RunStatus.test.tsx do it —
+// see the note on factory timing under Mocking Strategies.
+import BlogList from './BlogList';
 
-// --- Render helper (keeps tests DRY) ---
-const renderBlogList = () =>
-  render(<MemoryRouter><BlogList /></MemoryRouter>);
+afterEach(() => {
+  cleanup();
+  listing = { data: blogs, isLoading: false, error: null };
+});
 
 // --- Tests: 3 tests covering ALL real scenarios ---
 describe('BlogList', () => {
-  it('loads blogs and lets user navigate to a post', async () => {
-    const user = userEvent.setup();
-    renderBlogList();
+  it('lists blogs and lets the user open one', () => {
+    render(<BlogList />);
 
-    // Loading state appears first
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
-
-    // Blogs appear after fetch
-    expect(await screen.findByText('First Post')).toBeInTheDocument();
+    expect(screen.getByText('First Post')).toBeInTheDocument();
     expect(screen.getByText('Second Post')).toBeInTheDocument();
 
-    // User clicks a blog card
-    await user.click(screen.getByRole('link', { name: /first post/i }));
-    // Assert navigation happened (or verify detail view renders)
+    fireEvent.click(screen.getByRole('link', { name: /first post/i }));
+    // Assert navigation on a mocked next/navigation router spy — count first, see below.
   });
 
-  it('shows empty state when no blogs exist', async () => {
-    server.use(
-      http.get('/api/blogs', () => HttpResponse.json({ success: true, blogs: [] })),
-    );
-    renderBlogList();
+  it('shows the empty state when there are no blogs', () => {
+    listing = { data: [], isLoading: false, error: null };
+    render(<BlogList />);
 
-    expect(await screen.findByText(/no blogs/i)).toBeInTheDocument();
+    expect(screen.getByText(/no blogs/i)).toBeInTheDocument();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
   });
 
-  it('shows error message when API fails', async () => {
-    server.use(
-      http.get('/api/blogs', () => HttpResponse.json(
-        { success: false, message: 'Server error' },
-        { status: 500 },
-      )),
-    );
-    renderBlogList();
+  it('shows an error message when the query fails', () => {
+    listing = { data: undefined, isLoading: false, error: new Error('Server error') };
+    render(<BlogList />);
 
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
   });
 });
 ```
 
+A hook returning its fixture synchronously removes the loading state from the test, which is why
+these three cases need no `await`. When the component is instead driven through a real
+`QueryClientProvider` — the shape used by the few tests that stub `fetch` — the data does arrive
+asynchronously and the `findBy*` queries in **Async Testing** apply.
+
+**DevDigest** wraps only in the providers the component actually needs, in the order
+`QueryClientProvider > NextIntlClientProvider > ToastProvider`, and imports its i18n messages by a
+relative path whose depth is counted from the test file (`SkillCard.test.tsx` counts the segments
+in a comment rather than copying a sibling's path). `pnpm typecheck`, not `pnpm test`, is what names
+a wrong depth.
+
 ### Form Spec Template
 
 ```jsx
 // LoginForm.test.jsx
+let login = { mutate: vi.fn(), isPending: false, error: null };
+vi.mock('@/lib/hooks/auth', () => ({ useLogin: () => login }));
+
+import LoginForm from './LoginForm';
+
+afterEach(() => {
+  cleanup();
+  login = { mutate: vi.fn(), isPending: false, error: null };
+});
+
 describe('LoginForm', () => {
-  it('logs in with valid credentials and shows dashboard', async () => {
-    const user = userEvent.setup();
-    render(<MemoryRouter><LoginForm /></MemoryRouter>);
+  it('submits valid credentials', () => {
+    render(<LoginForm />);
 
-    // Fill form
-    await user.type(screen.getByLabelText(/email/i), 'admin@test.com');
-    await user.type(screen.getByLabelText(/password/i), 'password123');
-    await user.click(screen.getByRole('button', { name: /sign in/i }));
+    // fireEvent.change REPLACES the value — there is no incremental typing.
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'admin@test.com' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
-    // Success: redirected or success message
-    expect(await screen.findByText(/welcome/i)).toBeInTheDocument();
+    // Count FIRST: toHaveBeenCalledWith alone passes if *any* call matched, so a stray
+    // second submit would go unseen. (client/insights.md, on the PRRow router spy.)
+    expect(login.mutate).toHaveBeenCalledTimes(1);
+    expect(login.mutate).toHaveBeenCalledWith({
+      email: 'admin@test.com',
+      password: 'password123',
+    });
   });
 
   it('shows validation errors when submitted empty', async () => {
-    const user = userEvent.setup();
-    render(<MemoryRouter><LoginForm /></MemoryRouter>);
+    render(<LoginForm />);
 
-    await user.click(screen.getByRole('button', { name: /sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     // Both fields show errors
     expect(await screen.findByText(/email is required/i)).toBeInTheDocument();
     expect(screen.getByText(/password is required/i)).toBeInTheDocument();
 
-    // Form is still visible (not redirected)
-    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+    // And nothing was submitted
+    expect(login.mutate).not.toHaveBeenCalled();
   });
 
-  it('shows server error when API returns 401', async () => {
-    server.use(
-      http.post('/api/admin/login', () =>
-        HttpResponse.json({ success: false, message: 'Invalid credentials' }, { status: 401 }),
-      ),
-    );
-    const user = userEvent.setup();
-    render(<MemoryRouter><LoginForm /></MemoryRouter>);
+  it('shows the server error the hook reports', () => {
+    login = { mutate: vi.fn(), isPending: false, error: new Error('Invalid credentials') };
+    render(<LoginForm />);
 
-    await user.type(screen.getByLabelText(/email/i), 'admin@test.com');
-    await user.type(screen.getByLabelText(/password/i), 'wrongpassword');
-    await user.click(screen.getByRole('button', { name: /sign in/i }));
-
-    expect(await screen.findByText(/invalid credentials/i)).toBeInTheDocument();
+    expect(screen.getByText(/invalid credentials/i)).toBeInTheDocument();
   });
 });
 ```
@@ -263,17 +277,17 @@ describe('LoginForm', () => {
 // Test runner — ALWAYS from vitest
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// RTL — render, screen, waitFor
-import { render, screen, waitFor, within } from '@testing-library/react';
-
-// User interaction — ALWAYS userEvent, NEVER fireEvent
-import userEvent from '@testing-library/user-event';
+// RTL — render, screen, waitFor, cleanup, and the interaction API
+import { render, screen, waitFor, within, fireEvent, cleanup } from '@testing-library/react';
 
 // Hook testing
 import { renderHook, act } from '@testing-library/react';
 ```
 
 NEVER import from `jest`. Use `vi.fn()`, `vi.spyOn()`, `vi.mock()`.
+
+Interaction comes from `@testing-library/react` here, not from a separate package — see
+**Interaction** below for why, and never add an import for a package this repo does not have.
 
 ---
 
@@ -330,28 +344,47 @@ getByRole('navigation')            // <nav>
 
 ---
 
-## userEvent
+## Interaction — `fireEvent` (`userEvent` is not installed here)
 
-Always call `userEvent.setup()` before rendering. All methods are async.
+Where `@testing-library/user-event` is a dependency, prefer it — it dispatches the whole sequence
+of events a real user produces (pointer, focus, keyboard) instead of a single synthetic event, so
+it catches handlers a bare `click` never reaches. That preference assumes the package is present;
+`userEvent` is not installed in DevDigest.
+
+**The evidence, so this is not taken on trust:** `@testing-library/user-event` is absent from both
+the `dependencies` and the `devDependencies` block of `client/package.json`, and `userEvent` is not
+installed here nor referenced anywhere under `client/src`. All 13 client test files that simulate
+interaction import `fireEvent` from `@testing-library/react`. So `fireEvent` is the house tool: it
+is the correct choice here, not a tolerated one, and adding the package to "fix" it is not an
+option (see **Dependencies** above).
+
+`fireEvent` is synchronous — no `setup()`, and no `await` on the call itself.
 
 | Method | Purpose |
 |--------|---------|
-| `user.click(el)` | Click |
-| `user.dblClick(el)` | Double-click |
-| `user.type(el, 'text')` | Type text (appends to existing value) |
-| `user.clear(el)` | Clear input value |
-| `user.selectOptions(el, 'value')` | Select dropdown option |
-| `user.tab()` | Tab to next focusable element |
-| `user.keyboard('{Enter}')` | Press a key |
-| `user.hover(el)` / `user.unhover(el)` | Mouse hover |
-| `user.upload(el, file)` | File upload |
+| `fireEvent.click(el)` | Click |
+| `fireEvent.dblClick(el)` | Double-click |
+| `fireEvent.change(el, { target: { value: 'text' } })` | Set an input's value (replaces it) |
+| `fireEvent.keyDown(el, { key: 'Enter' })` | Press a key — also `ArrowDown`, `ArrowUp`, `Escape` |
+| `fireEvent.submit(form)` | Submit a form directly |
+| `fireEvent.focus(el)` / `fireEvent.blur(el)` | Focus and blur |
+| `fireEvent.mouseEnter(el)` / `fireEvent.mouseLeave(el)` | Hover |
 
 Pattern:
 ```js
-const user = userEvent.setup();
 render(<Component />);
-await user.click(screen.getByRole('button', { name: /save/i }));
+fireEvent.click(screen.getByRole('button', { name: /save/i }));
 ```
+
+Three consequences of the synchronous, single-event API, all visible in the client suite:
+
+- **No incremental typing.** `fireEvent.change` sets the final value in one shot. Assert on that
+  value, never on a keystroke sequence.
+- **One event, not a sequence.** A component that only responds to a full interaction needs the
+  individual events fired in order — `SkillsTab.test.tsx` fires `keyDown` with `ArrowDown` /
+  `ArrowUp` directly to exercise keyboard reordering.
+- **Nothing is awaited for you.** State that settles outside React's batching still needs `act(...)`
+  or a `findBy*` query; `PRRow.test.tsx` imports `act` from RTL for exactly that.
 
 ---
 
@@ -394,7 +427,7 @@ await waitForElementToBeRemoved(() => screen.queryByText('Loading...'));
 
 ```
 1. Arrange — render the component with props/providers
-2. Act — simulate user interaction via userEvent
+2. Act — simulate user interaction via fireEvent
 3. Assert — check what the user would see
 ```
 
@@ -407,11 +440,15 @@ Create a local `renderComponent` function when the component needs providers:
 ```js
 const renderComponent = (props = {}) =>
   render(
-    <MemoryRouter>
+    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
       <MyComponent defaultProp="value" {...props} />
-    </MemoryRouter>
+    </NextIntlClientProvider>
   );
 ```
+
+Wrap in **only** the providers the component actually needs. The DevDigest stack, outermost first,
+is `QueryClientProvider` → `NextIntlClientProvider` → `ToastProvider`; a component that reads no
+translations needs none of them.
 
 ### Asserting absence
 
@@ -451,69 +488,98 @@ renderHook(() => useAuth(), {
 
 ---
 
-## React Router Wrapping
+## Routing — mock `next/navigation`, there is no router to wrap
 
-Components using `<Link>`, `useNavigate`, `useParams`, or `useLocation` must be wrapped:
+`react-router` is not a dependency of this client (`grep router client/package.json` returns
+nothing). DevDigest is Next App Router, so a component using `useRouter`, `usePathname`,
+`useSearchParams` or `useParams` is **not** wrapped in a provider — the navigation module is
+mocked, and the spy is what you assert against.
 
 ```js
-// Simple
-render(<MemoryRouter><MyComponent /></MemoryRouter>);
+// Hoisted above the component import, because vi.mock is hoisted.
+const push = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 
-// With route params
-render(
-  <MemoryRouter initialEntries={['/blogs/123']}>
-    <Routes>
-      <Route path="/blogs/:id" element={<BlogDetail />} />
-    </Routes>
-  </MemoryRouter>
-);
+afterEach(() => push.mockReset());
 ```
+
+Then assert the count **before** the arguments:
+
+```js
+expect(push).toHaveBeenCalledTimes(1);
+expect(push).toHaveBeenCalledWith('/repos/1/pulls/482');
+```
+
+`toHaveBeenCalledWith` alone passes when *any* call matches, so a second bubbled navigation goes
+unseen and the test stays green. That is not hypothetical — it shipped a bug once, and the rule is
+recorded in `client/insights.md` § *Codebase Patterns*.
+
+For `<Link>`, nothing is needed: it renders as an anchor in jsdom.
 
 ---
 
 ## Mocking Strategies
 
-### MSW (Mock Service Worker) — preferred for all data-fetching components
+### Mock the data hook — the default for data-fetching components
 
-Intercepts at the network layer. Tests don't couple to HTTP client internals. Most realistic approach.
+**DevDigest has no MSW.** `msw` is in neither dependency block of `client/package.json`, and no
+component calls `fetch` directly: every server call goes through a hook in `client/src/lib/hooks/`
+built on `client/src/lib/api.ts` (`client/CLAUDE.md` § Conventions). That hook is therefore the
+seam — mock it, not the network.
 
-```js
-import { setupServer } from 'msw/node';
-import { http, HttpResponse } from 'msw';
-
-const server = setupServer(
-  // Default happy-path handlers
-  http.get('/api/blogs', () => HttpResponse.json({ success: true, blogs: [...] })),
-  http.post('/api/blogs', async ({ request }) => {
-    const body = await request.json();
-    return HttpResponse.json({ success: true, blog: { _id: '1', ...body } }, { status: 201 });
-  }),
-);
-
-beforeAll(() => server.listen());
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
-
-// Override for specific tests:
-it('handles error', async () => {
-  server.use(
-    http.get('/api/blogs', () => HttpResponse.json({ success: false }, { status: 500 })),
-  );
-  // ...
-});
-```
-
-### Module mock (`vi.mock`) — fallback when MSW is overkill
-
-```js
-vi.mock('../../api/blogApi', () => ({
-  getBlogs: vi.fn(),
+```jsx
+// PRRow fetches findings lazily for the peek panel; mock the hook rather than
+// standing up a QueryClientProvider (same idiom as RunTraceDrawer.test.tsx).
+vi.mock('@/lib/hooks/reviews', () => ({
+  usePrReviews: () => ({ data: REVIEWS, isLoading: false }),
 }));
+
+import { PRRow } from './PRRow';
 ```
 
-- Mock at the API/hook level, not at Axios/fetch level
-- Reset in `beforeEach`: `vi.clearAllMocks()`
-- Use `vi.mocked(fn)` for type-safe access to mock methods
+- Mock the hook module — never Axios, never `fetch`, never the component under test.
+- The factory must return **every** export the component imports from that module, or the import
+  throws.
+- `vi.mock` is hoisted above the imports, but its factory runs when the mocked module is first
+  imported. When the factory closes over a local fixture, the component's own import has to come
+  after that fixture is defined — which is why `PRRow.test.tsx` imports `./PRRow` below its
+  `REVIEWS` array rather than at the top.
+- Either path form resolves: the `@/` alias (`PRRow.test.tsx`) or a counted relative path
+  (`'../../../../../../../lib/hooks/reviews'` in the deeper `[number]/_components/*` tests). The
+  alias works under Vitest because `client/vitest.config.ts` re-declares it — tsconfig paths alone
+  would not be enough.
+- Reset shared spies in `afterEach`: `push.mockReset()`, or `vi.clearAllMocks()`.
+
+### Stubbing `fetch` — the exception, not the pattern
+
+`vi.stubGlobal("fetch", fetchMock)` appears in exactly **three** client test files —
+`ConventionsView.test.tsx`, `ImportSkillDrawer.test.tsx` and `CreateSkillModal.test.tsx` — and each
+one is there because the assertion is about the *request* (its URL, method or JSON body) rather
+than about rendered data. Use it only for that, and have the stub throw on any URL the test did not
+expect. For everything else, mock the hook.
+
+### MSW — not available here
+
+MSW intercepts at the network layer and is the most realistic option in projects that install it.
+Do not reach for it in DevDigest, and **do not install it** — a missing dependency is a blocker to
+report, per **Dependencies** above. The hook mock is the local equivalent.
+
+### `vi.mock` — scoped by package
+
+`vi.mock` is not a universal fallback in this repo. Which package you are in decides whether it is
+the idiom or a forbidden shortcut.
+
+| Package | `vi.mock` | The seam to use |
+|---|---|---|
+| `client/` | **Idiomatic.** Used across the suite for `next/navigation` and `src/lib/hooks/*`. | the module mock itself |
+| `server/`, `reviewer-core/` | **Banned.** | `buildApp({ overrides })` / `ContainerOverrides` (`server/src/platform/container.ts`) with fakes from `server/src/adapters/mocks.ts`; drive HTTP through `app.inject()` |
+
+On the client side: reset in `beforeEach`/`afterEach` with `vi.clearAllMocks()`, and use
+`vi.mocked(fn)` for type-safe access to mock methods.
+
+The server-side ban and its replacement are owned by
+[`onion-architecture`](../onion-architecture/SKILL.md) § Test seams. Read it before writing any
+`server/` or `reviewer-core/` test; do not restate or reinterpret it from here.
 
 ### Context mocking
 
@@ -577,7 +643,9 @@ vi.useRealTimers(); // restore in afterEach
 - One `describe` per component/hook
 - Test names describe user-visible behavior: `"user fills form and sees success message"`
 - Use `vi.fn()` for all mock functions
-- Call `userEvent.setup()` before `render()`
+- Drive interaction with `fireEvent`; `@testing-library/user-event` is not installed in DevDigest
+- Call `afterEach(cleanup)` explicitly, and reset any spy in the same hook — every client test file
+  here does, and a test that renders twice in one `it()` calls `cleanup()` between the renders
 - Always use `screen` — never destructure from `render()`
 - **1-3 tests per component** (user flows), 1-2 per hook, 2-3 per utility
 
@@ -588,7 +656,6 @@ vi.useRealTimers(); // restore in afterEach
 | Anti-Pattern | Fix |
 |-------------|-----|
 | Many tiny tests with one assertion each | Combine into fewer flow tests that walk through a user journey |
-| `fireEvent.click()` | Use `await user.click()` from `userEvent.setup()` |
 | Destructuring from `render()` | Use `screen.getByRole(...)` |
 | `getByTestId` as first choice | Try `getByRole`, `getByLabelText`, `getByText` first |
 | Testing `useState` / hook internals | Test the rendered output instead |
@@ -599,5 +666,7 @@ vi.useRealTimers(); // restore in afterEach
 | Importing from `jest` | Import from `vitest` (`vi.fn()`, `vi.mock()`) |
 | Mocking what you're testing | Mock dependencies, not the subject |
 | `act()` wrapping RTL calls | RTL handles `act()` internally |
-| Mocking Axios/fetch directly | Use MSW for network-level mocking |
+| Mocking `fetch` when the component reads a data hook | Mock the hook in `client/src/lib/hooks/` instead |
+| `vi.mock` in a `server/` or `reviewer-core/` test | Substitute at the container seam — `onion-architecture` § Test seams |
+| Installing a package a test seems to need | Report the missing dependency as a blocker and stop |
 | Testing every prop combination | Test the meaningful user-facing differences only |

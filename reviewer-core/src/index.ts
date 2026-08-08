@@ -22,6 +22,9 @@ export {
 // Citation grounding — the mandatory mechanical gate for diff findings.
 export { groundFindings, groundingSummary, type GroundingResult } from './grounding.js';
 
+// Scope partitioning — the Intent Layer's post-grounding filter. Defers, never drops.
+export { partitionByScope, scopeSummary, type ScopePartition } from './scope.js';
+
 // Structured-output helpers (Zod → JSON Schema + parse-with-repair).
 export {
   toJsonSchema,
@@ -51,6 +54,7 @@ export {
   toReviewPayload,
   gateTriggered,
   countBlockers,
+  verdictFromFindings,
   type ToReviewOptions,
 } from './output/to-review.js';
 

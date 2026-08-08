@@ -129,6 +129,70 @@ non-destructive and does not need a reinstall: move each entry back out of `node
 package.
 _2026-08-04_
 
+### A new `.claude/agents/*.md` is not invocable in the session that created it
+**Symptom:** `.claude/agents/researcher.md` was written, then invoking it in the same session
+failed with `Agent type 'researcher' not found. Available agents: claude, claude-code-guide,
+Explore, general-purpose, Plan, statusline-setup` — which is also what a malformed file would
+produce, so it reads as a frontmatter bug and invites rewriting a file that is already correct.
+**Rule:** don't chase the frontmatter — validate it out-of-band first.
+`node scripts/check-agent-frontmatter.mjs` does it: it finds the YAML parser `pnpm install` already
+put in `server/node_modules/yaml`, and confirms both that the `---` block parses and that no tool
+you meant to withhold leaked into `tools`. An unquoted `file:line` inside `description` is safe;
+only `: ` (colon-space) breaks a bare YAML scalar. See the counterpart below on the registry — the
+"re-check in a fresh session" half of this rule no longer applies.
+_2026-08-07_
+
+**Counterpart — the frontmatter schema has two traps, and both fail the same undiagnosable way.**
+`tools` is a comma-separated string (`tools: Read, Grep, Glob`) but **`skills` is a YAML block
+sequence** — `skills:` followed by one `  - name` per line. Assuming symmetry with `tools` and
+writing `skills: a, b` produces a plain string where an array is expected. Separately,
+`allowed-tools` and `disable-model-invocation` are **Skill-only** fields with no subagent
+equivalent, so copying them out of `.claude/skills/*/SKILL.md` — three skills here carry
+`allowed-tools` — silently does nothing instead of erroring.
+**Rule:** extend the out-of-band check above to assert `Array.isArray(d.skills)` and that every
+entry resolves to a real `.claude/skills/<name>/SKILL.md`. `.claude/agents/planner.md:6-8` is the
+worked example. Field list verified against https://code.claude.com/docs/en/sub-agents.
+_2026-08-07_
+
+**Counterpart — `skills:` preloads bodies, not references, and never replaces the `Skill` tool.**
+It injects each named skill's full `SKILL.md` at startup but none of its sibling files, so
+preloading `pr-self-review` yields the review pipeline and *not* `routing.md`. Reaching a reference
+file still needs `Skill` in the `tools` allowlist — and without `Skill` listed there a subagent
+cannot load any skill at all, at any point in its run.
+**Rule:** budget from the real numbers before preloading broadly, and re-measure rather than
+quoting a figure — these move. `node scripts/check-agent-frontmatter.mjs` prints each agent's
+preload total as an advisory suffix, which is the cheapest way to see it. As of 2026-08-07 the 14
+`SKILL.md` here total ~144 KB, spread from 962 B (`fastify-best-practices`) to 26.6 KB
+(`react-testing-library`, the one skill no agent preloads — it alone would blow the 25 KB budget).
+`planner` sits at 24.0 KB against that budget and is the house maximum; the four newer agents
+preload one skill each or none.
+_2026-08-07_
+
+**Counterpart — the registry now refreshes mid-session, but the parent's rule survives it.**
+Four agent files were written in a single session and the harness announced all four as available
+agent types **in that same session**, with no restart; `plan-verifier` and `architecture-reviewer`
+were then invoked through the `Agent` tool and returned full reports. The parent entry's symptom no
+longer reproduces on this version of Claude Code.
+**Rule:** stop planning around "verify it in a fresh session" — a smoke invocation is available
+immediately, which makes it cheap enough that there is no excuse for skipping it. Keep the
+out-of-band YAML check as the *first* move on any `Agent type '<name>' not found` anyway: a
+malformed file and a registry that has not caught up still fail identically, and the check is the
+only thing that separates them.
+_2026-08-07_
+
+**Counterpart — the mid-session refresh is real for skills and unreliable for agents.** In one
+session `.claude/skills/feature-workflow/SKILL.md` was written and announced as available
+immediately, while five agent files written in the same session were **not**: `brainstorm` and
+`refactor-planner` both failed with `Agent type '<name>' not found` listing the seven pre-existing
+agents, after `node scripts/check-agent-frontmatter.mjs` had already returned `PASS` on all twelve
+with exit 0. So the counterpart above is half right — the two registries do not refresh together,
+and the agent one is the one that lags.
+**Rule:** keep the smoke invocation in the plan, but do not treat it as a same-session gate for
+agents. The sequence that actually discriminates is: validator green ⇒ the file is correct ⇒ a
+`not found` is the registry, not the frontmatter ⇒ re-invoke in the next session. Reading a
+same-session `not found` as a file defect is what sends you rewriting a file that already passes.
+_2026-08-07_
+
 ### A repo script that shells out to a unix-only binary silently excludes the Windows dev box
 **Symptom:** `scripts/make-skill-sample.sh` died with `zip: command not found`. Git Bash ships no
 `zip`, and Windows is a first-class dev environment in this repo — the PR gate itself
@@ -139,6 +203,32 @@ already put on disk, rather than a system binary. `scripts/make-skill-sample.mjs
 directory and calls `zipSync` from `server/node_modules/fflate`, and behaves identically on all
 three platforms. When writing a repo script, assume only `node`, `git` and POSIX shell builtins.
 _2026-08-03_
+
+### A grep probe returning zero hits may mean the pattern never compiled, not that the code is clean
+**Symptom:** an onion audit ran the six probes from
+`.claude/skills/onion-architecture/SKILL.md:148-157` and four returned `0 matches`, which reads as
+a pass. They were not a pass. `rg` is not on PATH here, rtk falls back to plain `grep`, and
+`/usr/bin/grep: Unmatched ( or \(` went to stderr while the empty match list looked exactly like a
+genuine clean result. Re-running the same four ripgrep-backed turned the same diff into one
+CRITICAL and two HIGH findings.
+**Rule:** a `0 matches` from any pattern containing `(`, `|`, `\s` or `?` is unconfirmed until you
+have read stderr. Prefer the `Grep` tool — it is ripgrep and surfaces a bad pattern as an error
+rather than as an empty result — or pass `grep -E` explicitly. The banner `rtk: Failed to resolve
+'rg' via PATH, falling back to direct exec` is the signal that this is in play, and it appears on
+stderr where a piped command will hide it.
+_2026-08-07_
+
+### `server/package.json` is not under `skip-worktree`, whatever TESTING.md says
+**Symptom:** `TESTING.md:83-86` states the file is `skip-worktree` ("a local variant diverges from
+the committed file") and that CI therefore inlines the vitest lanes. `git ls-files -v
+server/package.json` returns `H`, not `S` — the flag is not set in this checkout — and
+`git diff HEAD -- server/package.json` is empty.
+**Rule:** the *rule* that claim protects is still live: `.github/workflows/server-unit.yml` and
+`server-integration.yml` invoke `pnpm exec vitest run …` directly, so do not add `test:unit` /
+`test:integration` scripts and make CI depend on them. Only the stated mechanism is stale — do not
+go hunting for the flag when a `package.json` edit shows up in `git status`, and do not "restore"
+it.
+_2026-08-07_
 
 ## Recurring Errors & Fixes
 

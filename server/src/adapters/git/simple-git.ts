@@ -1,6 +1,6 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { join } from 'node:path';
-import { mkdir, readFile, access, rm } from 'node:fs/promises';
+import { join, sep } from 'node:path';
+import { mkdir, readFile, access, rm, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import type {
   GitClient,
@@ -126,8 +126,24 @@ export class SimpleGitClient implements GitClient {
     }));
   }
 
+  /**
+   * Read a file from the clone, CONTAINED to the clone root.
+   *
+   * `realpath` both sides and compare, because a lexical check on the caller's
+   * side cannot see a symlink: a repo we clone is attacker-controlled content,
+   * and `reset --hard` materialises whatever links its default branch carries.
+   * Without this, `docs/plan.md` → `../../../../secrets.json` reads the operator's
+   * `~/.devdigest/secrets.json` (GITHUB_TOKEN + every provider key), which sits
+   * three levels above the clone root — and the intent classifier will happily
+   * put the result in a prompt bound for a third-party model provider.
+   */
   async readFile(repo: RepoRef, path: string): Promise<string> {
-    return readFile(join(this.clonePathFor(repo), path), 'utf8');
+    const root = await realpath(this.clonePathFor(repo));
+    const target = await realpath(join(root, path));
+    if (target !== root && !target.startsWith(root + sep)) {
+      throw new Error(`path escapes the repo clone: ${path}`);
+    }
+    return readFile(target, 'utf8');
   }
 }
 

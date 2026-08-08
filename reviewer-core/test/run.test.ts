@@ -88,6 +88,60 @@ describe('reviewPullRequest (engine)', () => {
     expect(outcome.review.score).toBe(100);
   });
 
+  it('verdict is deterministic from findings: grounding away every finding flips request_changes → approve', async () => {
+    // The model reports request_changes on two findings, but BOTH cite lines that
+    // are not in the diff, so the grounding gate drops them. Score already tracked
+    // that (→ 100); the verdict must follow the same surviving set, or the header
+    // says "changes requested" over an empty findings list scored 100.
+    const allHallucinated = {
+      verdict: 'request_changes',
+      summary: 'problems found',
+      score: 30,
+      findings: [
+        { ...fixture.findings[0]!, id: 'h1', start_line: 998, end_line: 998 },
+        { ...fixture.findings[1]!, id: 'h2', start_line: 999, end_line: 999 },
+      ],
+    };
+    const llm = new MockLLMProvider('openai', { structured: allHallucinated });
+    const diff = await new MockGitClient().diff();
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'security reviewer',
+      model: 'gpt-4.1',
+      diff,
+      llm,
+    });
+
+    expect(outcome.review.findings).toHaveLength(0);
+    expect(outcome.review.score).toBe(100);
+    expect(outcome.review.verdict).toBe('approve');
+  });
+
+  it("verdict follows the failOn gate: a lone WARNING is 'comment' at 'critical', 'request_changes' at 'warning'", async () => {
+    const warnOnly = {
+      verdict: 'approve', // model self-reports approve; the engine must ignore it
+      summary: 'one warning',
+      score: 90,
+      findings: [{ ...fixture.findings[0]!, severity: 'WARNING', start_line: 11, end_line: 11 }],
+    };
+    const diff = await new MockGitClient().diff();
+    const base = { systemPrompt: 's', model: 'gpt-4.1', diff } as const;
+
+    const atCritical = await reviewPullRequest({
+      ...base,
+      llm: new MockLLMProvider('openai', { structured: warnOnly }),
+    });
+    expect(atCritical.review.findings).toHaveLength(1);
+    expect(atCritical.review.verdict).toBe('comment');
+
+    const atWarning = await reviewPullRequest({
+      ...base,
+      llm: new MockLLMProvider('openai', { structured: warnOnly }),
+      failOn: 'warning',
+    });
+    expect(atWarning.review.verdict).toBe('request_changes');
+  });
+
   it('checkCancelled throwing aborts before the LLM call', async () => {
     const llm = new MockLLMProvider('openai', { structured: fixture });
     const diff = await new MockGitClient().diff();

@@ -17,7 +17,15 @@ import { DiffTab } from "./_components/DiffTab";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
 import { usePullDetail, usePulls } from "../../../../../lib/hooks";
 import { useQueryClient } from "@tanstack/react-query";
-import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } from "../../../../../lib/hooks/reviews";
+import {
+  usePrReviews,
+  useCancelRun,
+  usePrActiveRuns,
+  usePrRuns,
+  useDeleteRun,
+  usePrIntent,
+  useDeriveIntent,
+} from "../../../../../lib/hooks/reviews";
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
 import { githubPrUrl } from "../../../../../lib/github-urls";
@@ -88,6 +96,20 @@ export default function PRDetailPage() {
   const severity = parseSeverity(search.get("severity"));
   const latestRuns = React.useMemo(() => latestRunPerAgent(runs), [runs]);
   const severityCounts = React.useMemo(() => countBySeverity(latestRuns), [latestRuns]);
+
+  // Derived PR intent — one hook for BOTH tab mounts; TanStack Query dedupes.
+  const { data: intent, isLoading: intentLoading } = usePrIntent(prId);
+  const deriveIntent = useDeriveIntent(prId);
+  // Findings the reviewer marked out of scope, which the engine deferred out of
+  // the score. Taken from the newest run per agent for the same reason the
+  // severity tally is: a re-run would otherwise list its findings twice.
+  const deferredFindings = React.useMemo(
+    () =>
+      latestRuns
+        .flatMap((r) => r.findings)
+        .filter((f) => f.out_of_scope === true && f.dismissed_at == null),
+    [latestRuns],
+  );
   const visibleRuns = severity ? latestRuns.filter((r) => runMatches(r, severity)) : runs;
   const setSeverity = (next: Severity | null) =>
     setParams({ severity: next ? next.toLowerCase() : null, tab: "findings" });
@@ -179,7 +201,16 @@ export default function PRDetailPage() {
       />
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
-        {tab === "overview" && <OverviewTab prBody={pr.body} />}
+        {tab === "overview" && (
+          <OverviewTab
+            prBody={pr.body}
+            intent={intent}
+            intentLoading={intentLoading}
+            deferredFindings={deferredFindings}
+            onRederiveIntent={() => deriveIntent.mutate()}
+            rederivingIntent={deriveIntent.isPending}
+          />
+        )}
 
         {tab === "findings" && (
           <FindingsTab

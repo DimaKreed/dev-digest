@@ -13,13 +13,14 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [next-best-practices](next-best-practices/SKILL.md) | Frontend | Next.js App Router, RSC boundaries, data fetching, optimization |
 | [react-best-practices](react-best-practices/SKILL.md) | Frontend | React anti-patterns, state management, hooks rules |
 | [frontend-ui-architecture](frontend-ui-architecture/SKILL.md) | Frontend | Where frontend code lives: folder layout, component splitting, logic placement, import direction |
-| [react-testing-library](react-testing-library/SKILL.md) | Frontend | General-purpose React Testing Library guide with Vitest |
+| [react-testing-library](react-testing-library/SKILL.md) | Frontend | React Testing Library with Vitest, plus the DevDigest `client/` conventions (fireEvent, hook mocks) |
 | [zod](zod/SKILL.md) | Full-stack | Zod schema validation, parsing, error handling, type inference |
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Shared | Read a module's `insights.md` before work; append durable findings at the end |
 | [pr-self-review](pr-self-review/SKILL.md) | Shared | Routes the local diff to the skills above and blocks `gh pr create` on any CRITICAL |
+| [feature-workflow](feature-workflow/SKILL.md) | Shared | Runs a large change through the subagent chain, with artifact hand-offs and a per-run trace — and decides first whether it earns one |
 
 ## What Are Skills?
 

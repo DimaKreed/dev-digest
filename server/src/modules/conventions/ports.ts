@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ConventionCategory } from '@devdigest/shared';
+import { ConventionCategory, type ConventionStatus } from '@devdigest/shared';
 import type { ConventionRow } from '../../db/rows.js';
 import { MAX_CANDIDATES } from './constants.js';
 
@@ -30,6 +30,86 @@ export interface SuppressionInput {
   rule: string;
   evidencePath: string | null;
   evidenceStartLine: number | null;
+}
+
+/** Just enough of a repo row to address the clone and label the skill. */
+export interface RepoInfo {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  defaultBranch: string;
+  clonePath: string | null;
+}
+
+/** A verified candidate on its way into the table. */
+export interface InsertConvention {
+  rule: string;
+  category: ConventionCategory;
+  evidencePath: string;
+  evidenceSnippet: string;
+  evidenceStartLine: number;
+  evidenceEndLine: number;
+  evidenceFiles: string[];
+  occurrences: number;
+  confidence: number;
+}
+
+export interface UpdateConvention {
+  status?: ConventionStatus;
+  rule?: string;
+  category?: ConventionCategory;
+}
+
+/**
+ * Repository port (C3) — the persistence surface `ConventionsService` depends
+ * on. `ConventionsRepository` implements it; a test substitutes it through
+ * `ContainerOverrides.conventions` instead of casting into a private field.
+ *
+ * Deliberately narrower than the class (H11): `getById` is repository-internal
+ * (only `update` calls it), so it is not on the port. Add a method here only
+ * when the SERVICE calls it.
+ */
+export interface ConventionsRepositoryPort {
+  /** Reads the `repos` table — this module never imports `modules/repos`. */
+  getRepo(workspaceId: string, repoId: string): Promise<RepoInfo | undefined>;
+  /** Raw `settings.feature_models` value; the service validates it. */
+  featureModelsSetting(workspaceId: string): Promise<unknown>;
+  listByRepo(workspaceId: string, repoId: string): Promise<ConventionRow[]>;
+  listByIds(workspaceId: string, repoId: string, ids: string[]): Promise<ConventionRow[]>;
+  update(
+    workspaceId: string,
+    id: string,
+    patch: UpdateConvention,
+  ): Promise<ConventionRow | undefined>;
+  rescanForRepo(
+    workspaceId: string,
+    repoId: string,
+    values: InsertConvention[],
+    keysOf: (c: SuppressionInput) => string[],
+  ): Promise<{ rows: ConventionRow[]; suppressed: number }>;
+  setSkillId(
+    workspaceId: string,
+    repoId: string,
+    ids: string[],
+    skillId: string,
+  ): Promise<number>;
+}
+
+/**
+ * The two repo-intel reads this module makes, declared HERE rather than taken
+ * from `modules/repo-intel/types.ts`: importing a sibling slice's file trips the
+ * `no-cross-module` arch rule, and the service only ever needs these two.
+ * `RepoIntel` satisfies it structurally, so the container passes its facade
+ * straight in.
+ */
+export interface ConventionsRepoIntelPort {
+  /** Top-N source paths by rank; `[]` when repo-intel is off or unindexed. */
+  getConventionSamples(repoId: string, n: number): Promise<string[]>;
+  getRepoMap(
+    repoId: string,
+    tokenBudget?: number,
+  ): Promise<{ text: string; degraded?: boolean }>;
 }
 
 /** Schema name passed to `completeStructured` (and keyed by test fixtures). */

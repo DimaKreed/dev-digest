@@ -3,21 +3,25 @@ import {
   FeatureModelChoice,
   type ConventionCandidate,
   type ExtractionStats,
+  type GitClient,
+  type LLMProvider,
   type PluginBundle,
   type PluginConvention,
+  type Provider,
   type RepoRef,
   type SkillDraft,
 } from '@devdigest/shared';
-import type { Container } from '../../platform/container.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { renderPrompt } from '../../platform/prompts.js';
 import {
-  ConventionsRepository,
+  ConventionExtraction,
+  EXTRACTION_SCHEMA_NAME,
+  type ConventionsRepoIntelPort,
+  type ConventionsRepositoryPort,
   type InsertConvention,
   type RepoInfo,
   type UpdateConvention,
-} from './repository.js';
-import { ConventionExtraction, EXTRACTION_SCHEMA_NAME } from './ports.js';
+} from './ports.js';
 import {
   CONFIG_FILES,
   buildSamplePayload,
@@ -71,18 +75,27 @@ interface VerifiedEvidence {
   endLine: number;
 }
 
-export class ConventionsService {
-  private repo: ConventionsRepository;
+/**
+ * Exactly what this service needs (H7), all of it a port. Assembled in
+ * `routes.ts` from the container — the service itself never sees the container,
+ * so every one of these four can be substituted in a test.
+ */
+export interface ConventionsDeps {
+  conventions: ConventionsRepositoryPort;
+  repoIntel: ConventionsRepoIntelPort;
+  /** Lazy: resolving a provider needs a key, and a scan may never run. */
+  llm: (provider: Provider) => Promise<LLMProvider>;
+  git: GitClient;
+}
 
-  constructor(private container: Container) {
-    this.repo = new ConventionsRepository(container.db);
-  }
+export class ConventionsService {
+  constructor(private deps: ConventionsDeps) {}
 
   // ---- reads ---------------------------------------------------------------
 
   async list(workspaceId: string, repoId: string): Promise<ConventionListResult> {
     await this.mustGetRepo(workspaceId, repoId);
-    const rows = await this.repo.listByRepo(workspaceId, repoId);
+    const rows = await this.deps.conventions.listByRepo(workspaceId, repoId);
     const lastScan = rows.reduce<Date | null>(
       (latest, r) => (latest === null || r.createdAt > latest ? r.createdAt : latest),
       null,
@@ -99,7 +112,7 @@ export class ConventionsService {
     id: string,
     patch: UpdateConvention,
   ): Promise<ConventionCandidate> {
-    const row = await this.repo.update(workspaceId, id, patch);
+    const row = await this.deps.conventions.update(workspaceId, id, patch);
     if (!row) throw new NotFoundError('Convention not found');
     return toDto(row);
   }
@@ -112,7 +125,7 @@ export class ConventionsService {
 
     // repo-intel degrades to [] when disabled OR unindexed — a legitimate state
     // rather than a crash, so it becomes a clear 409 the UI can act on.
-    const paths = await this.container.repoIntel.getConventionSamples(repoId, SAMPLE_COUNT);
+    const paths = await this.deps.repoIntel.getConventionSamples(repoId, SAMPLE_COUNT);
     if (paths.length === 0) {
       throw new AppError(
         'repo_not_indexed',
@@ -139,7 +152,7 @@ export class ConventionsService {
       repo: repo.fullName,
       sampled_files: String(files.length),
     });
-    const llm = await this.container.llm(choice.provider);
+    const llm = await this.deps.llm(choice.provider);
     const result = await llm.completeStructured({
       model: choice.model,
       schemaName: EXTRACTION_SCHEMA_NAME,
@@ -206,7 +219,7 @@ export class ConventionsService {
       });
     }
 
-    const { rows, suppressed } = await this.repo.rescanForRepo(
+    const { rows, suppressed } = await this.deps.conventions.rescanForRepo(
       workspaceId,
       repoId,
       inserts,
@@ -239,7 +252,7 @@ export class ConventionsService {
     conventionIds: string[],
   ): Promise<SkillDraft> {
     const repo = await this.mustGetRepo(workspaceId, repoId);
-    const rows = await this.repo.listByIds(workspaceId, repoId, conventionIds);
+    const rows = await this.deps.conventions.listByIds(workspaceId, repoId, conventionIds);
     // buildSkillDraft filters to `accepted` itself — a pending or rejected rule
     // never reaches a body a reviewer will act on.
     return buildSkillDraft(repo.name, rows.map(toDto));
@@ -252,13 +265,13 @@ export class ConventionsService {
     conventionIds: string[],
   ): Promise<{ linked: number }> {
     await this.mustGetRepo(workspaceId, repoId);
-    return { linked: await this.repo.setSkillId(workspaceId, repoId, conventionIds, skillId) };
+    return { linked: await this.deps.conventions.setSkillId(workspaceId, repoId, conventionIds, skillId) };
   }
 
   /** Export the accepted conventions (plus the merged skill) as a plugin bundle. */
   async pluginBundle(workspaceId: string, repoId: string): Promise<PluginBundle> {
     const repo = await this.mustGetRepo(workspaceId, repoId);
-    const accepted = (await this.repo.listByRepo(workspaceId, repoId))
+    const accepted = (await this.deps.conventions.listByRepo(workspaceId, repoId))
       .map(toDto)
       .filter((c) => c.status === 'accepted');
     const draft = buildSkillDraft(repo.name, accepted);
@@ -309,7 +322,7 @@ export class ConventionsService {
   // ---- internals -----------------------------------------------------------
 
   private async mustGetRepo(workspaceId: string, repoId: string): Promise<RepoInfo> {
-    const repo = await this.repo.getRepo(workspaceId, repoId);
+    const repo = await this.deps.conventions.getRepo(workspaceId, repoId);
     if (!repo) throw new NotFoundError('Repo not found');
     return repo;
   }
@@ -319,7 +332,7 @@ export class ConventionsService {
     const read = await Promise.all(
       paths.map(async (path) => {
         try {
-          const text = await this.container.git.readFile(ref, path);
+          const text = await this.deps.git.readFile(ref, path);
           return text.trim() ? { path, text } : null;
         } catch {
           return null;
@@ -332,7 +345,7 @@ export class ConventionsService {
   /** Skeleton context. Best-effort: a degraded repo-intel just means no map. */
   private async readRepoMap(repoId: string): Promise<string> {
     try {
-      const map = await this.container.repoIntel.getRepoMap(repoId, REPO_MAP_TOKEN_BUDGET);
+      const map = await this.deps.repoIntel.getRepoMap(repoId, REPO_MAP_TOKEN_BUDGET);
       return map.degraded ? '' : map.text;
     } catch {
       return '';
@@ -350,7 +363,7 @@ export class ConventionsService {
    */
   private async resolveModel(workspaceId: string): Promise<FeatureModelChoice> {
     const fallback = FEATURE_MODELS.find((f) => f.id === 'conventions')!;
-    const raw = await this.repo.featureModelsSetting(workspaceId);
+    const raw = await this.deps.conventions.featureModelsSetting(workspaceId);
     const chosen = (raw as Record<string, unknown> | null | undefined)?.['conventions'];
     const parsed = FeatureModelChoice.safeParse(chosen);
     return parsed.success

@@ -8,6 +8,25 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import {
+  deriveIntent,
+  intentBlock,
+  intentDepsFrom,
+  resolveIntentModel,
+  type IntentDeps,
+} from './intent.js';
+
+/**
+ * The derived PR intent as the executor carries it: the prompt block plus the
+ * classifier's usage, which is reported per-trace and deliberately kept out of
+ * `agent_runs.cost_usd`.
+ */
+type DerivedIntent = {
+  block: string;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number | null;
+};
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -105,6 +124,25 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // ---- Pre-work: derive (or reuse) the PR intent -------------------------
+    // Runs ONCE per review request, inside the FANNED-OUT logger, so on
+    // {all: true} it happens once and shows up in every target run's live log
+    // and trace. Deliberately NOT wrapped in failAll: intent is enrichment, and
+    // failing N runs over an optional classification would regress behaviour
+    // that works today. A throw here leaves `intent` undefined and every agent
+    // gets exactly the pre-intent prompt.
+    let intent: DerivedIntent | undefined;
+    try {
+      intent = await runLog.step(
+        'Deriving PR intent',
+        () => this.deriveOrReuseIntent(workspaceId, pull, repo, diff, runLog),
+        { kind: 'tool' },
+      );
+    } catch (err) {
+      runLog.error(`intent: derivation failed — ${(err as Error).message}; continuing without it`);
+      intent = undefined;
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -112,7 +150,16 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(
+          workspaceId,
+          pull,
+          repo,
+          diff,
+          agent,
+          runId,
+          runLog,
+          intent,
+        );
         logger?.info(
           {
             runId,
@@ -144,6 +191,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    intent?: DerivedIntent,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -213,6 +261,10 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // The engine derives the verdict from the grounded findings under this
+        // gate — the same policy `countBlockers` uses below, so the verdict and
+        // the blocker count can never describe different findings.
+        failOn: agent.ciFailOn,
         // Resolved skill bodies (NOT slugs) — the engine renders them as the
         // `## Skills / rules` section. Same omit-when-empty contract as below,
         // so an agent with no skills produces a byte-identical prompt to before.
@@ -225,6 +277,14 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // Derived intent & scope — same omit-when-empty contract, which is what
+        // keeps every pre-intent prompt byte-identical when the classifier did
+        // not run or failed.
+        ...(intent ? { intent: intent.block } : {}),
+        // Nothing may be deferred out of the score at a WARNING gate: a deferred
+        // WARNING is 12 score points and, at ciFailOn 'warning', a CI gate flip.
+        // The intent layer must never be able to turn a red gate green.
+        allowDefer: agent.ciFailOn !== 'warning',
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -234,7 +294,12 @@ export class ReviewRunExecutor {
       });
       const { tokensIn, tokensOut, costUsd, grounding } = outcome;
 
+      // `review.findings` is the ACTIVE set — grounded and in scope. It is what
+      // score, verdict and blockers are derived from. Deferred findings are NOT
+      // dropped: they are persisted alongside (flagged `out_of_scope`) so the
+      // UI can show them, and only excluded from the derived numbers.
       const keptFindings = outcome.review.findings;
+      const persistedFindings = [...keptFindings, ...outcome.deferred];
 
       // ---- Persist review + findings ----------------------------------------
       const review = await this.repo.insertReview({
@@ -248,8 +313,11 @@ export class ReviewRunExecutor {
         score: outcome.review.score,
         model: agent.model,
       });
-      const findingRows = await this.repo.insertFindings(review.id, keptFindings);
-      runLog.result(`Persisted review ${review.id} with ${findingRows.length} finding(s)`);
+      const findingRows = await this.repo.insertFindings(review.id, persistedFindings);
+      runLog.result(
+        `Persisted review ${review.id} with ${findingRows.length} finding(s)` +
+          (outcome.deferred.length > 0 ? ` (${outcome.deferred.length} deferred as out of scope)` : ''),
+      );
 
       // Mark the commit this review ran against so the PR list can tell
       // reviewed / needs-review (head moved) / stale apart.
@@ -261,20 +329,8 @@ export class ReviewRunExecutor {
       // the timeline colors on, NOT the model's self-reported verdict.
       const blockers = countBlockers(keptFindings, agent.ciFailOn);
 
-      // ---- Observability: agent_runs + ONE run_traces document --------------
-      await this.repo.completeAgentRun(runId, {
-        status: 'done',
-        durationMs,
-        tokensIn,
-        tokensOut,
-        costUsd,
-        findingsCount: findingRows.length,
-        grounding,
-        score: outcome.review.score,
-        blockers,
-        error: null,
-      });
-
+      // ---- Observability: ONE run_traces document + run_skills, THEN the -----
+      // ---- terminal status --------------------------------------------------
       const trace: RunTrace = {
         config: {
           agent: agent.name,
@@ -289,8 +345,16 @@ export class ReviewRunExecutor {
           tokens_in: tokensIn,
           tokens_out: tokensOut,
           cost_usd: costUsd,
-          findings: findingRows.length,
+          findings: keptFindings.length,
           grounding,
+          // Intent-classifier usage, kept out of `cost_usd` on purpose: the
+          // classifier runs once per REQUEST while {all: true} opens N runs, so
+          // folding it into agent_runs.cost_usd would multiply one call's price
+          // by N. Same numbers land in each trace — see the RunStats docblock.
+          intent_tokens_in: intent?.tokensIn ?? null,
+          intent_tokens_out: intent?.tokensOut ?? null,
+          intent_cost_usd: intent?.costUsd ?? null,
+          scope: outcome.scope,
         },
         prompt_assembly: {
           ...outcome.assembly,
@@ -316,15 +380,16 @@ export class ReviewRunExecutor {
       };
       runLog.info('Run complete; trace persisted');
       await this.repo.saveRunTrace(runId, trace);
-      // Which skills were actually in this prompt. Recorded AFTER the run row
-      // is complete (FK target), and only for skills that really made it in —
-      // this is what every per-skill stat is computed over.
+      // Which skills were actually in this prompt, and only those that really
+      // made it in — this is what every per-skill stat is computed over. The
+      // `agent_runs` FK target already exists: `runReview` INSERTs the row up
+      // front and `completeAgentRun` only UPDATEs it.
       //
       // Best-effort ON PURPOSE: this is observability, not the result. The
-      // review and its findings are already persisted and the run is already
-      // 'done', so letting an insert failure fall through to the catch below
-      // would relabel a successful run as 'failed'. The narrow real case is a
-      // skill deleted mid-run — its FK is gone and the insert throws.
+      // review and its findings are already persisted, so letting an insert
+      // failure fall through to the catch below would relabel a successful run
+      // as 'failed'. The narrow real case is a skill deleted mid-run — its FK is
+      // gone and the insert throws.
       try {
         await this.repo.saveRunSkills(
           runId,
@@ -333,6 +398,27 @@ export class ReviewRunExecutor {
       } catch (err) {
         runLog.info(`skills: could not record run_skills (${(err as Error).message})`);
       }
+
+      // LAST, deliberately: a terminal status is the signal every reader polls
+      // on (`waitForPrRuns`, the SSE client, the PR list), so it must not become
+      // terminal until the trace and run_skills it implies are actually
+      // committed. Setting it before those writes is a race a reader loses by
+      // seeing 'done' next to a missing trace.
+      await this.repo.completeAgentRun(runId, {
+        status: 'done',
+        durationMs,
+        tokensIn,
+        tokensOut,
+        costUsd,
+        // The ACTIVE count, not `findingRows.length` — this number sits next to
+        // `score` and `blockers` in the timeline, and all three must describe the
+        // same set. Deferred findings are persisted but do not count here.
+        findingsCount: keptFindings.length,
+        grounding,
+        score: outcome.review.score,
+        blockers,
+        error: null,
+      });
       this.container.runBus.complete(runId);
 
       return { review, findings: findingRows, grounding, raw: outcome.review };
@@ -361,6 +447,75 @@ export class ReviewRunExecutor {
       this.container.runBus.complete(runId);
       throw err;
     }
+  }
+
+  /**
+   * Step 7 of the review sequence: reuse the stored classification when it was
+   * derived for THIS head SHA by THIS model, else derive a fresh one and upsert
+   * it.
+   *
+   * The reuse key is `head_sha` + `model` together. `head_sha` alone is not
+   * enough — an intent derived by a different model is a different
+   * classification, and switching the model in Settings must take effect. A
+   * stale intent is a correctness bug here, not a cosmetic one: mis-scoping now
+   * DEFERS findings.
+   */
+  private async deriveOrReuseIntent(
+    workspaceId: string,
+    pull: PullRow,
+    repoRow: typeof schema.repos.$inferSelect,
+    diff: UnifiedDiff,
+    runLog: RunLogger,
+  ): Promise<DerivedIntent> {
+    const deps = this.intentDeps();
+    const repoRef = { owner: repoRow.owner, name: repoRow.name };
+
+    const choice = await resolveIntentModel(deps, workspaceId);
+    const modelId = `${choice.provider}/${choice.model}`;
+
+    const stored = await this.repo.getIntent(pull.id);
+    if (stored && stored.head_sha === pull.headSha && stored.model === modelId) {
+      runLog.info(`intent: reusing stored classification for ${pull.headSha.slice(0, 8)}`);
+      return {
+        block: intentBlock(stored),
+        tokensIn: 0,
+        tokensOut: 0,
+        costUsd: null,
+      };
+    }
+
+    const derived = await deriveIntent(deps, {
+      workspaceId,
+      pull,
+      repoRef,
+      diff,
+      onNote: (msg) => runLog.info(msg),
+    });
+
+    await this.repo.upsertIntent(pull.id, {
+      intent: derived.classification.intent,
+      in_scope: derived.classification.in_scope,
+      out_of_scope: derived.classification.out_of_scope,
+      head_sha: pull.headSha,
+      model: derived.model,
+      confidence: derived.classification.confidence,
+      sources: derived.classification.sources,
+      missing_context: derived.classification.missing_context,
+    });
+
+    return {
+      block: intentBlock(derived.classification),
+      tokensIn: derived.tokensIn,
+      tokensOut: derived.tokensOut,
+      costUsd: derived.costUsd,
+    };
+  }
+
+  /** Narrow dependency set for the classifier — not the whole Container. */
+  private intentDeps(): IntentDeps {
+    return intentDepsFrom(this.container, (workspaceId, key) =>
+      this.repo.settingValue(workspaceId, key),
+    );
   }
 
   /**

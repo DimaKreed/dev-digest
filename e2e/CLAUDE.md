@@ -31,8 +31,16 @@ Hermetic mode uses ports 5433 (pg) / 3101 (api) / 3100 (web) and its own contain
 - `{BASE}` in a spec is substituted with the target origin at runtime; never hardcode a host.
 - A `wait` step **is** an assertion — if the wait times out, the test fails. That's the
   intended way to assert a state was reached.
-- **Deterministic locators only.** No matching on user-facing text: every string is
-  next-intl-driven and will change. Use stable attributes/structure.
+- **No AI `chat` command.** That is the ban: `chat` drives the browser with a model, so
+  the run stops being reproducible and key-free. Every other locator is fair game, and
+  the specs use `wait --url`, `wait --text`, `wait --load networkidle`,
+  `find text "…" click` and `find role button click --name "…"`.
+- **Prefer `role` + accessible name over `--text` where one exists.** User-facing
+  strings are next-intl-driven, so a copy change breaks a `--text` locator. That is a
+  preference with a real cost behind it, not a prohibition — most assertions here *are*
+  rendered copy: `specs/04-pr-findings.flow.json` opens the tab with
+  `find role button click --name "Agent runs"`, then asserts the seeded run with
+  `wait --text "request changes"`.
 
 ## Gotchas
 

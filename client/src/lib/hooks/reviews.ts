@@ -8,6 +8,7 @@ import { api, API_BASE } from "../api";
 import { notify } from "../toast";
 import type {
   FindingActionKind,
+  PrIntentDetail,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
@@ -56,6 +57,34 @@ export function usePrReviews(prId: string | null | undefined, enabled = true) {
     queryKey: ["reviews", prId],
     queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
     enabled: !!prId && enabled,
+  });
+}
+
+// ---- Derived PR intent (Intent Layer) ----
+/**
+ * The PR's derived intent + scope.
+ *
+ * `status` is server-derived. When `auto_derive_intent` is ON and the stored row
+ * is missing or was derived for an older head SHA, the GET kicks off a
+ * background derivation and answers `deriving` immediately — so we poll until it
+ * settles, the same read-until-settled shape `usePrRuns` uses. Deliberately not
+ * SSE: intent derivation is not a run, so it has no runId to subscribe to.
+ */
+export function usePrIntent(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["pr-intent", prId],
+    queryFn: () => api.get<PrIntentDetail>(`/pulls/${prId}/intent`),
+    enabled: !!prId,
+    refetchInterval: (query) => (query.state.data?.status === "deriving" ? 3000 : false),
+  });
+}
+
+/** Explicit (re-)derivation — the card's re-derive button. Ignores the toggle. */
+export function useDeriveIntent(prId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<PrIntentDetail>(`/pulls/${prId}/intent`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pr-intent", prId] }),
   });
 }
 

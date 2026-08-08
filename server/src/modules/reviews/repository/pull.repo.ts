@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
-import type { Intent } from '@devdigest/shared';
 import type { PullRow } from '../../../db/rows.js';
+import type { IntentUpsert, StoredIntent } from '../ports.js';
 
 // ---- PR lookup (workspace-scoped) -----------------------------------------
 
@@ -46,23 +46,39 @@ export async function markReviewed(db: Db, prId: string, sha: string): Promise<v
 
 // ---- intent ---------------------------------------------------------------
 
-export async function upsertIntent(db: Db, prId: string, intent: Intent): Promise<void> {
+export async function upsertIntent(db: Db, prId: string, intent: IntentUpsert): Promise<void> {
+  const columns = {
+    intent: intent.intent,
+    inScope: intent.in_scope,
+    outOfScope: intent.out_of_scope,
+    headSha: intent.head_sha,
+    model: intent.model,
+    confidence: intent.confidence,
+    sources: intent.sources,
+    missingContext: intent.missing_context,
+  };
   await db
     .insert(t.prIntent)
-    .values({
-      prId,
-      intent: intent.intent,
-      inScope: intent.in_scope,
-      outOfScope: intent.out_of_scope,
-    })
-    .onConflictDoUpdate({
-      target: t.prIntent.prId,
-      set: { intent: intent.intent, inScope: intent.in_scope, outOfScope: intent.out_of_scope },
-    });
+    .values({ prId, ...columns })
+    // A re-derivation replaces the whole classification, provenance included —
+    // never merge a new intent onto an older head's sources.
+    .onConflictDoUpdate({ target: t.prIntent.prId, set: { ...columns, createdAt: new Date() } });
 }
 
-export async function getIntent(db: Db, prId: string): Promise<Intent | undefined> {
+export async function getIntent(db: Db, prId: string): Promise<StoredIntent | undefined> {
   const [row] = await db.select().from(t.prIntent).where(eq(t.prIntent.prId, prId));
   if (!row) return undefined;
-  return { intent: row.intent, in_scope: row.inScope, out_of_scope: row.outOfScope };
+  return {
+    intent: row.intent,
+    in_scope: row.inScope,
+    out_of_scope: row.outOfScope,
+    head_sha: row.headSha,
+    model: row.model,
+    confidence: row.confidence,
+    sources: row.sources,
+    missing_context: row.missingContext,
+    // `created_at` is NOT NULL with a default, so pre-migration rows were
+    // backfilled with the migration timestamp, not with their real write time.
+    created_at: row.createdAt.toISOString(),
+  };
 }

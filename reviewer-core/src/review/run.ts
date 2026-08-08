@@ -1,4 +1,5 @@
 import type {
+  CiFailOn,
   Finding,
   LLMProvider,
   PromptAssembly,
@@ -9,6 +10,8 @@ import type {
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
+import { verdictFromFindings } from '../output/to-review.js';
+import { partitionByScope, scopeSummary } from '../scope.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 
 /**
@@ -71,8 +74,25 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /** Derived PR intent & scope (Intent Layer). Untrusted; rendered right after
+      the PR description. Empty/undefined → section omitted, and the assembled
+      prompt is then byte-identical to a pre-intent one. */
+  intent?: string;
+  /**
+   * Whether a finding the reviewer flagged `out_of_scope` may be deferred out of
+   * the score/verdict/blockers. Defaults to true. Pass `agent.ciFailOn !==
+   * 'warning'`: at a warning gate nothing may be deferred, or the intent layer
+   * could turn a red CI gate green.
+   */
+  allowDefer?: boolean;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
+  /**
+   * CI gate policy the verdict is derived from (default 'critical'). Pass the
+   * agent's `ci_fail_on` so the verdict, the blocker count and the posted GitHub
+   * event all agree; the model's self-reported verdict is ignored either way.
+   */
+  failOn?: CiFailOn;
   /** Override the structured-output retry budget. */
   maxRetries?: number;
   /** Override the map-reduce line threshold. */
@@ -99,6 +119,14 @@ export interface ReviewOutcome {
   grounding: string;
   /** Findings dropped by grounding, with reasons (for logs / "never go silent"). */
   dropped: { finding: Finding; reason: string }[];
+  /**
+   * Findings the reviewer marked out of scope and `partitionByScope` deferred.
+   * They are NOT dropped — persist and display them; they are simply excluded
+   * from `review.score`, `review.verdict` and the blocker count.
+   */
+  deferred: Finding[];
+  /** Human-readable scope summary, e.g. "1 deferred / 4". */
+  scope: string;
   /** Which path ran. */
   mode: ReviewMode;
   /** Prompt assembly (for the run trace). Single-pass: the one call; map-reduce: the whole-diff assembly. */
@@ -135,6 +163,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
+    intent: input.intent,
     task: input.task,
   };
 
@@ -201,13 +230,35 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit('result', `Citation grounding: ${grounding}`);
 
-  // Score is derived from the findings that SURVIVED grounding (not the model's
-  // self-reported number, and not the pre-grounding set) so the score, the
-  // findings list, and the deterministic event always agree.
+  // Scope partition (Intent Layer). Runs AFTER grounding and BEFORE every derived
+  // number. `groundingSummary` above stays pre-partition on purpose — it is a
+  // grounding statistic, not a findings count — which is why the scope figure is
+  // reported as its own stat rather than folded in. Don't "fix" that: folding
+  // them would print "5/5 passed" next to `findings: 3`.
+  const partition = partitionByScope(ground.kept, { allowDefer: input.allowDefer ?? true });
+  const scope = scopeSummary(partition);
+  for (const f of partition.deferred) {
+    emit('info', `scope deferred "${f.title}": ${f.scope_rationale ?? 'marked out of scope'}`);
+  }
+  if (partition.deferred.length > 0) emit('result', `Scope filter: ${scope}`);
+
+  // Score AND verdict are derived from the findings that SURVIVED grounding AND
+  // are in scope (not the model's self-reported numbers, and not the pre-grounding
+  // set) so the score, the verdict, the findings list, and the deterministic event
+  // always agree. Deriving only the score used to leave the verdict describing the
+  // pre-grounding set: drop every finding and the header still said "changes
+  // requested" over an empty list scored 100.
   return {
-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+    review: {
+      ...merged,
+      findings: partition.active,
+      score: scoreFromFindings(partition.active),
+      verdict: verdictFromFindings(partition.active, input.failOn ?? 'critical'),
+    },
     grounding,
     dropped: ground.dropped,
+    deferred: partition.deferred,
+    scope,
     mode,
     assembly,
     chunks: chunks.map((c) => ({ label: c.label })),

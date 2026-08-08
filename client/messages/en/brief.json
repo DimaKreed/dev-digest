@@ -10,6 +10,23 @@
   "overlap": "{count} overlap",
   "unavailable": "Brief not available yet.",
   "unavailableHint": "Run a review or open the PR to compute it.",
+  "intentCard": {
+    "inScope": "In scope",
+    "outOfScope": "Out of scope",
+    "noneStated": "Nothing stated",
+    "confidence": "Confidence",
+    "sources": "{count, plural, one {# source} other {# sources}}",
+    "missingContext": "Context the classifier could not reach",
+    "stale": "Stale",
+    "staleHint": "Derived for an earlier commit — re-derive to match the current head.",
+    "rederive": "Re-derive",
+    "rederiving": "Deriving…",
+    "deriving": "Deriving the PR intent…",
+    "model": "Model: {model}",
+    "cost": "Each derivation is a paid model call.",
+    "deferred": "{count, plural, one {# finding deferred as out of scope} other {# findings deferred as out of scope}}",
+    "deferredHint": "Excluded from the score, the verdict and the blocker count. Critical and security findings are never deferred."
+  },
   "why": {
     "title": "git-why",
     "blame": "blame",

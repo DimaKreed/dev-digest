@@ -26,6 +26,8 @@ import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { ConventionsRepository } from '../modules/conventions/repository.js';
+import type { ConventionsRepositoryPort } from '../modules/conventions/ports.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -55,6 +57,12 @@ export interface ContainerOverrides {
   tokenizer?: Tokenizer;
   /** Outbound HTTP behind the SSRF guard — tests inject a fetcher with no network. */
   httpFetcher?: HttpFetcher;
+  /**
+   * Repository ports (C3). A service typed against the port is unit-testable
+   * with no Docker and no cast into a private field — which is the whole payoff
+   * of declaring the port in the first place.
+   */
+  conventions?: ConventionsRepositoryPort;
 }
 
 export class Container {
@@ -76,6 +84,7 @@ export class Container {
   // `container.agentsRepo` instead of reaching into another module's folder.
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
+  private _conventionsRepo?: ConventionsRepositoryPort;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -103,6 +112,13 @@ export class Container {
 
   get reviewRepo(): ReviewRepository {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
+  }
+
+  /** Conventions persistence, behind its port so a test can replace it. */
+  get conventionsRepo(): ConventionsRepositoryPort {
+    if (this.overrides.conventions) return this.overrides.conventions;
+    this._conventionsRepo ??= new ConventionsRepository(this.db);
+    return this._conventionsRepo;
   }
 
   get codeIndex(): CodeIndex {

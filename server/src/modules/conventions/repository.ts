@@ -1,8 +1,14 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
-import type { ConventionCategory, ConventionStatus } from '@devdigest/shared';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { ConventionRow, SuppressionInput } from './ports.js';
+import type {
+  ConventionRow,
+  ConventionsRepositoryPort,
+  InsertConvention,
+  RepoInfo,
+  SuppressionInput,
+  UpdateConvention,
+} from './ports.js';
 
 /**
  * Conventions data-access. The ONLY place that touches `conventions`.
@@ -17,36 +23,7 @@ import type { ConventionRow, SuppressionInput } from './ports.js';
 
 export type { ConventionRow };
 
-/** Just enough of a repo row to address the clone and label the skill. */
-export interface RepoInfo {
-  id: string;
-  owner: string;
-  name: string;
-  fullName: string;
-  defaultBranch: string;
-  clonePath: string | null;
-}
-
-/** A verified candidate on its way into the table. */
-export interface InsertConvention {
-  rule: string;
-  category: ConventionCategory;
-  evidencePath: string;
-  evidenceSnippet: string;
-  evidenceStartLine: number;
-  evidenceEndLine: number;
-  evidenceFiles: string[];
-  occurrences: number;
-  confidence: number;
-}
-
-export interface UpdateConvention {
-  status?: ConventionStatus;
-  rule?: string;
-  category?: ConventionCategory;
-}
-
-export class ConventionsRepository {
+export class ConventionsRepository implements ConventionsRepositoryPort {
   constructor(private db: Db) {}
 
   // ---- reads on other domains' tables --------------------------------------

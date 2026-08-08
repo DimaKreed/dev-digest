@@ -53,6 +53,10 @@ export const PromptAssembly = z.object({
   repo_map: z.string().nullish(),
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),
+  /** Derived PR intent & scope (Intent Layer); null when the classifier did not
+      run, failed, or was reusing nothing. Its absence is what makes a
+      pre-intent prompt byte-identical to a post-intent one. */
+  intent: z.string().nullish(),
   user: z.string(),
 });
 export type PromptAssembly = z.infer<typeof PromptAssembly>;
@@ -74,6 +78,19 @@ export const RunStats = z.object({
   cost_usd: z.number().nullish(),
   findings: z.number().int(),
   grounding: z.string(),
+  // Intent-classifier usage, kept SEPARATE from the run's own tokens/cost above.
+  // The classifier runs ONCE per review request, but `{all: true}` opens N runs
+  // and every one of them gets the same numbers written into its trace — so
+  // summing `intent_cost_usd` across runs OVER-COUNTS. It is per-trace
+  // attribution, not an additive ledger; `agent_runs.cost_usd` is deliberately
+  // left untouched by it. `nullish` for the same reason as `cost_usd`.
+  intent_tokens_in: z.number().int().nullish(),
+  intent_tokens_out: z.number().int().nullish(),
+  intent_cost_usd: z.number().nullish(),
+  // Scope partition, e.g. "1 deferred / 4". Deliberately NOT folded into
+  // `grounding`: that string is a grounding statistic, and merging the two
+  // would print "5/5 passed" next to `findings: 3`. Don't "fix" that.
+  scope: z.string().nullish(),
 });
 export type RunStats = z.infer<typeof RunStats>;
 

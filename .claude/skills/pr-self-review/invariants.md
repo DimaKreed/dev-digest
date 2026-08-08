@@ -25,6 +25,7 @@ Run every check whose trigger the diff touches. Record each as a `Finding` with
 | `server/.dependency-cruiser-known-violations.json` | the file was regenerated, or its violation count went **up**. The baseline only ever shrinks | `arch-baseline-regenerated` |
 | `client/**` | `@devdigest/shared` imported **without** `import type` — a runtime import pulls `vendor/shared/index.ts` into the bundle and its `./contracts/*.js` re-exports break the Next build | `shared-runtime-import` |
 | `client/**` | a deep import of `src/vendor/ui/{primitives,kit,charts,shell}` instead of the `@devdigest/ui` barrel | `ui-barrel-bypassed` |
+| `.claude/agents/*.md` | the out-of-band YAML check fails: `tools` is not a string, `skills` is present but not an array, a `skills` entry has no `.claude/skills/<name>/SKILL.md`, a Skill-only key (`allowed-tools`, `disable-model-invocation`) is present, or a tool that agent's README documents as withheld appears in `tools` | `agent-frontmatter-invalid` |
 | touched packages | `typecheck` fails | `does-not-typecheck` |
 
 ## WARNING
@@ -51,6 +52,28 @@ cd server        && pnpm typecheck
 cd reviewer-core && npm run typecheck
 cd e2e           && npm run typecheck
 ```
+
+Agent frontmatter, when the diff touches `.claude/agents/*.md`. One `PASS`/`FAIL` line per agent,
+non-zero exit on any failure. Run it from the repo root; it finds the YAML parser in
+`server/node_modules/yaml` itself, so no `cd` and no package manager are involved:
+
+```bash
+node scripts/check-agent-frontmatter.mjs
+```
+
+It fails an agent file when: the frontmatter does not parse as YAML; `name` differs from the
+filename stem; `description` is missing or 120 characters or shorter (a `: ` inside an unquoted
+scalar truncates it silently); `tools` is anything other than a comma-separated string; `skills` is
+present but not an array, or present at all on `plan-verifier`; a `skills` entry has no
+`.claude/skills/<name>/SKILL.md`; a Skill-only key (`allowed-tools`, `disable-model-invocation`) is
+present; a tool name is unknown, or `Write`/`Edit` appears in `architecture-reviewer` or
+`plan-verifier`; or `model` is not one of `opus | sonnet | haiku | inherit`. The preloaded
+`SKILL.md` byte total it prints per agent is advisory and does not affect the exit code.
+
+[.claude/agents/README.md](../../agents/README.md) § *Authoring a new agent* carries the reasoning
+behind each trap; the script at
+[scripts/check-agent-frontmatter.mjs](../../../scripts/check-agent-frontmatter.mjs) is the single
+copy of the logic, so this section and that one cannot drift apart.
 
 Grep probes, from the repo root — intersect every hit with the changed-file list before reporting:
 
@@ -80,5 +103,15 @@ Record `checks.arch` and `checks.typecheck` in the report as structured status *
 CRITICAL finding for each failure, so the gate holds even if one path is missed. Set
 `checks.tests.status` to `"not-run"` — tests are deliberately not run here, CI runs them, and a pass
 must never read as a green suite.
+
+For a change under `.claude/agents/**`, record the script above as the evidence. It is a
+*frontmatter* check: a clean run proves the file parses and grants what it should, never that the
+agent behaves. Say which in the report.
+
+The registry does pick up a new agent mid-session, so a smoke invocation is available and is worth
+running — but it is a judgement call about behaviour, not a mechanical check, and it does not
+belong in this pre-pass. If `Agent type '<name>' not found` still comes back, the script is what
+separates a malformed file from a registry that has not caught up. Do not edit frontmatter that
+the script just passed.
 
 A clean pre-pass is the normal outcome. Say `no invariant violations` rather than manufacturing one.
