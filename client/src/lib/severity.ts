@@ -1,4 +1,4 @@
-import type { ReviewRecord, Severity } from "@devdigest/shared";
+import type { FindingRecord, ReviewRecord, Severity } from "@devdigest/shared";
 
 /**
  * Severity vocabulary and the findings-tally rules, shared by every surface
@@ -47,6 +47,18 @@ export function latestRunPerAgent(reviews: ReviewRecord[]): ReviewRecord[] {
  *  ReviewRunAccordion. Accepted ones do: they're real, just already handled. */
 export function isLiveFinding(f: { dismissed_at: string | null }): boolean {
   return f.dismissed_at == null;
+}
+
+/**
+ * Every live finding across the newest run per agent — the two rules above
+ * applied together, flattened.
+ *
+ * This is the one input every per-line findings surface takes: the diff's
+ * severity markers and the Smart Diff index both read it, so a line's marker
+ * cannot disagree with the header chip that counted it.
+ */
+export function liveFindings(reviews: ReviewRecord[]): FindingRecord[] {
+  return latestRunPerAgent(reviews).flatMap((r) => r.findings.filter(isLiveFinding));
 }
 
 /** Per-severity tally across the given runs, always with all three keys present. */

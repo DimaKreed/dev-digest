@@ -154,6 +154,13 @@ vi.mock("@/lib/hooks/reviews", () => ({
 // (react-testing-library § Mocking Strategies, the PRRow.test.tsx idiom).
 import { DiffTab } from "./DiffTab";
 
+/** Severity words stamped on marked diff rows, in document order. */
+function severityMarkers(): string[] {
+  return Array.from(document.querySelectorAll("[data-severity]")).map(
+    (el) => el.getAttribute("data-severity") ?? "",
+  );
+}
+
 const GROUP_LABELS = /^(Core|Wiring|Boilerplate)$/;
 const FILE_PATHS = /^(src\/service\.ts|src\/modules\/index\.ts|pnpm-lock\.yaml)$/;
 
@@ -317,5 +324,56 @@ describe("DiffTab — inline comments in both orders (W8.5)", () => {
   it("reveals an anchored thread and posts a new comment — in the smart order", async () => {
     renderTab({ order: "smart" });
     await commentFlow();
+  });
+});
+
+describe("DiffTab severity markers in the diff", () => {
+  // A finding is a property of the code, not of how the files are sorted, so
+  // both orders must mark it. Smart order routes through SmartDiffViewer's
+  // per-group DiffViewers and original order through one whole-PR DiffViewer —
+  // two different paths to the same component, hence two tests.
+  it("marks the flagged line and names its severity — in the original order", () => {
+    renderTab({ order: "original" });
+
+    expect(severityMarkers()).toEqual(["CRITICAL"]);
+    expect(screen.getByText("blocker")).toHaveAttribute("title", "Critical: Hardcoded secret");
+
+    // The full text is one click away, in both orders.
+    fireEvent.click(screen.getByText("blocker"));
+    expect(screen.getByText("a live key is committed")).toBeInTheDocument();
+  });
+
+  it("marks the flagged line and names its severity — in the smart order", () => {
+    renderTab({ order: "smart" });
+
+    expect(severityMarkers()).toEqual(["CRITICAL"]);
+    expect(screen.getByText("blocker")).toBeInTheDocument();
+  });
+
+  it("marks nothing once the finding is dismissed", () => {
+    // Same rule as every other findings surface: dismissed findings are not live.
+    reviewsState = {
+      data: [{ ...REVIEWS[0]!, findings: [finding({ dismissed_at: "2026-08-06T00:00:00Z" })] }],
+      isLoading: false,
+    };
+    renderTab({ order: "original" });
+
+    expect(severityMarkers()).toEqual([]);
+    expect(screen.queryByText("blocker")).not.toBeInTheDocument();
+  });
+
+  it("marks nothing when a re-run supersedes the finding", () => {
+    // latestRunPerAgent keeps the newest review per agent; the older run's
+    // finding must not mark a line the current run no longer flags.
+    reviewsState = {
+      data: [
+        { ...REVIEWS[0]!, id: "r2", created_at: "2026-08-03T00:00:00Z", findings: [] },
+        REVIEWS[0]!,
+      ],
+      isLoading: false,
+    };
+    renderTab({ order: "original" });
+
+    expect(severityMarkers()).toEqual([]);
   });
 });

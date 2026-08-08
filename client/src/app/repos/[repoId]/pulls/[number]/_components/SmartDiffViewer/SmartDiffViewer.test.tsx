@@ -79,7 +79,18 @@ const REVIEWS: ReviewRecord[] = [
     model: "openrouter/deepseek/deepseek-v4-flash",
     grounding: null,
     created_at: "2026-08-02T00:00:00Z",
-    findings: [finding(), finding({ id: "f2", severity: "WARNING", start_line: 14, end_line: 14 })],
+    findings: [
+      finding(),
+      // A distinct title, so a row that renders the WRONG finding's text is
+      // distinguishable from one that renders the right one.
+      finding({
+        id: "f2",
+        severity: "WARNING",
+        start_line: 14,
+        end_line: 14,
+        title: "Unbounded loop",
+      }),
+    ],
   },
 ];
 
@@ -167,18 +178,56 @@ describe("SmartDiffViewer", () => {
     const onOpenFile = vi.fn();
     renderViewer({ onOpenFile });
 
-    // Badge text comes from prReview.smartDiff.findingLines ("{count} finding-lines").
-    expect(screen.getByText("2 finding-lines")).toBeInTheDocument();
+    // Badge text comes from prReview.smartDiff.findingLines, an ICU plural.
+    expect(screen.getByText("2 flagged lines")).toBeInTheDocument();
 
-    // Each chip is a button whose accessible name names the line it targets —
-    // otherwise W7.5's "clicking a chip" is not addressable at all.
-    const chip = screen.getByRole("button", { name: /11/ });
-    fireEvent.click(chip);
+    // The row's accessible name is set explicitly and carries all three things a
+    // reviewer needs before jumping: severity as TEXT (not colour alone), the
+    // location, and what is actually wrong there.
+    const row = screen.getByRole("button", {
+      name: "Critical: src/service.ts:11 — Hardcoded secret",
+    });
+    fireEvent.click(row);
 
     // Count FIRST: toHaveBeenCalledWith alone passes if *any* call matched, so a
     // bubbled second call would go unseen (client/insights.md:122-127).
     expect(onOpenFile).toHaveBeenCalledTimes(1);
     expect(onOpenFile).toHaveBeenCalledWith("src/service.ts", 11, 11);
+  });
+
+  it("shows each flagged line's severity and title, most severe first (W7.4)", () => {
+    renderViewer();
+
+    // The visible title is the whole point of the row: a bare line number says
+    // WHERE to look and nothing about WHAT is wrong.
+    expect(screen.getByText("Hardcoded secret")).toBeInTheDocument();
+
+    // Severity reaches a colour-blind reader as text, via SeverityBadge.
+    const rows = screen.getAllByRole("button", { name: /src\/service\.ts:/ });
+    expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual([
+      "Critical: src/service.ts:11 — Hardcoded secret",
+      "Warning: src/service.ts:14 — Unbounded loop",
+    ]);
+  });
+
+  it("truncates the index past the chip cap instead of dropping every row (W7.4)", () => {
+    const lines = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    renderViewer({
+      smartDiff: {
+        groups: [
+          { role: "core", files: [sdFile("src/service.ts", 10, 2, lines)] },
+          { role: "wiring", files: [] },
+          { role: "boilerplate", files: [] },
+        ],
+        split_suggestion: { too_big: false, total_lines: 12, proposed_splits: [] },
+      },
+    });
+
+    // MAX_FINDING_CHIPS_PER_FILE = 8, so 8 rows render and the rest are counted.
+    expect(screen.getAllByRole("button", { name: /src\/service\.ts:/ })).toHaveLength(8);
+    expect(screen.getByText(/2 more flagged lines not shown/)).toBeInTheDocument();
+    // The count badge still reports the true total, not the truncated one.
+    expect(screen.getByText("10 flagged lines")).toBeInTheDocument();
   });
 
   it("opens a collapsed group when the deep-link target lands inside it, and re-opens on a new nonce (W7.6)", () => {

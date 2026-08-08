@@ -9,7 +9,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, SEV } from "@devdigest/ui";
+import { Badge, Icon, SEV, SeverityBadge } from "@devdigest/ui";
 import { DiffViewer, type DiffCommentApi, type DiffTarget } from "@/components/diff-viewer";
 import type {
   PrFile,
@@ -19,7 +19,8 @@ import type {
   SmartDiffRole,
 } from "@devdigest/shared";
 import { COLLAPSED_ROLES, MAX_FINDING_CHIPS_PER_FILE, ROLE_LABEL_KEY } from "./constants";
-import { filesByPath, groupPrFiles, roleForPath, severityForLine } from "./helpers";
+import { liveFindings } from "@/lib/severity";
+import { filesByPath, findingsForLine, groupPrFiles, roleForPath } from "./helpers";
 import { chipTone, s } from "./styles";
 
 type OpenRoles = Record<SmartDiffRole, boolean>;
@@ -55,6 +56,10 @@ export function SmartDiffViewer({
   const [openRoles, setOpenRoles] = React.useState<OpenRoles>(initialOpenRoles);
 
   const byPath = React.useMemo(() => filesByPath(files), [files]);
+  // Derived here rather than taken as a prop: `reviews` is already the source of
+  // truth this component was given, and the diff's markers must agree with the
+  // index rows above them by construction.
+  const findings = React.useMemo(() => liveFindings(reviews), [reviews]);
   const { too_big: tooBig, total_lines: totalLines } = smartDiff.split_suggestion;
 
   // A deep link into a COLLAPSED group would otherwise die silently: FileCard
@@ -120,6 +125,7 @@ export function SmartDiffViewer({
                 <DiffViewer
                   files={groupPrFiles(group, byPath)}
                   commenting={commenting}
+                  findings={findings}
                   target={target}
                 />
               </>
@@ -131,7 +137,18 @@ export function SmartDiffViewer({
   );
 }
 
-/** One file's flagged lines, as clickable chips that deep-link into the diff. */
+/**
+ * One file's flagged lines, as clickable rows that deep-link into the diff.
+ *
+ * Each row carries the finding's severity AND its title, because the diff rows
+ * it links to render neither: without the title the reviewer arrives at a line
+ * knowing only that something is wrong with it. `SeverityBadge` is icon + label
+ * rather than a colour, so the severity survives for a colour-blind reader.
+ *
+ * Past MAX_FINDING_CHIPS_PER_FILE the list is truncated rather than dropped —
+ * a count with nothing readable under it is the failure mode this row exists to
+ * fix, so the overflow says how many are hidden and points at the Agent runs tab.
+ */
 function FindingIndexRow({
   file,
   reviews,
@@ -143,32 +160,55 @@ function FindingIndexRow({
 }) {
   const t = useTranslations("prReview");
   const count = file.finding_lines.length;
-  // Past the cap the chips stop being an index and become a wall, so only the
-  // count badge renders. See MAX_FINDING_CHIPS_PER_FILE.
-  const chips = count > MAX_FINDING_CHIPS_PER_FILE ? [] : file.finding_lines;
+  const shown = file.finding_lines.slice(0, MAX_FINDING_CHIPS_PER_FILE);
+  const hidden = count - shown.length;
 
   return (
-    <div style={s.indexRow}>
-      <span className="mono" style={s.indexPath}>
-        {file.path}
-      </span>
-      <Badge>{t("smartDiff.findingLines", { count })}</Badge>
-      {chips.map((line) => {
-        const severity = severityForLine(reviews, file.path, line);
-        const tone = severity ? SEV[severity] : null;
+    <div style={s.indexFile}>
+      <div style={s.indexRow}>
+        <span className="mono" style={s.indexPath}>
+          {file.path}
+        </span>
+        <Badge>{t("smartDiff.findingLines", { count })}</Badge>
+      </div>
+
+      {shown.map((line) => {
+        // The server ships line numbers only; the finding behind a line is
+        // re-derived from the reviews the page already has. A flagged line with
+        // no live finding left (dismissed since the response was cached) keeps
+        // its number and simply has no title to show.
+        const finding = findingsForLine(reviews, file.path, line)[0];
+        const tone = finding ? SEV[finding.severity] : null;
+        const label = finding
+          ? `${tone?.label}: ${file.path}:${line} — ${finding.title}`
+          : `${file.path}:${line}`;
         return (
           <button
             key={line}
             type="button"
-            aria-label={`${file.path}:${line}`}
-            style={{ ...s.chip, ...chipTone(tone?.c ?? null, tone?.bg ?? null) }}
-            className="mono tnum"
+            aria-label={label}
+            style={s.findingRow}
             onClick={() => onOpenFile(file.path, line, line)}
           >
-            {line}
+            {finding ? (
+              <SeverityBadge severity={finding.severity} compact />
+            ) : (
+              <span style={s.findingNoSeverity} />
+            )}
+            <span
+              className="mono tnum"
+              style={{ ...s.findingLine, ...chipTone(tone?.c ?? null, tone?.bg ?? null) }}
+            >
+              {line}
+            </span>
+            {finding && <span style={s.findingTitle}>{finding.title}</span>}
           </button>
         );
       })}
+
+      {hidden > 0 && (
+        <span style={s.indexOverflow}>{t("smartDiff.findingsHidden", { count: hidden })}</span>
+      )}
     </div>
   );
 }

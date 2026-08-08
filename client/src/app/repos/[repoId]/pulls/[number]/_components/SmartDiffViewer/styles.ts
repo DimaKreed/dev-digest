@@ -52,16 +52,43 @@ export const s = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
-  chip: {
+  indexFile: { display: "flex", flexDirection: "column", gap: 3 } satisfies CSSProperties,
+  indexOverflow: {
+    fontSize: 11,
+    color: "var(--text-muted)",
+    paddingLeft: 22,
+  } satisfies CSSProperties,
+  findingRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "3px 6px 3px 18px",
+    borderRadius: 5,
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    textAlign: "left",
+  } satisfies CSSProperties,
+  /** Keeps the line numbers aligned when a row has no live finding left. */
+  findingNoSeverity: { width: 24, flexShrink: 0 } satisfies CSSProperties,
+  findingLine: {
     fontSize: 11,
     fontWeight: 600,
     padding: "1px 7px",
     borderRadius: 4,
     border: "1px solid var(--border)",
-    cursor: "pointer",
     lineHeight: 1.6,
+    flexShrink: 0,
   } satisfies CSSProperties,
-} satisfies Record<string, CSSProperties>;
+  findingTitle: {
+    fontSize: 12,
+    color: "var(--text-primary)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+} as const;
 
 /** Chip colours for a re-derived severity; neutral tokens when there is none. */
 export function chipTone(color: string | null, bg: string | null): CSSProperties {

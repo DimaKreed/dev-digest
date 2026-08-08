@@ -6,6 +6,7 @@ import { SectionLabel, Button } from "@devdigest/ui";
 import { DiffViewer, type DiffCommentApi, type DiffTarget } from "@/components/diff-viewer";
 import { usePrComments, useCreatePrComment, usePrReviews, useSmartDiff } from "@/lib/hooks/reviews";
 import { notify } from "@/lib/toast";
+import { liveFindings } from "@/lib/severity";
 import { SmartDiffViewer } from "../SmartDiffViewer";
 import type { PrFile } from "@devdigest/shared";
 
@@ -37,13 +38,17 @@ export function DiffTab({
   const t = useTranslations("prReview");
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
-  // Both hooks are already called by the page / other tabs; TanStack Query
-  // dedupes on the key, so this is one fetch, not two.
+  // `usePrReviews` shares the page's cache entry (TanStack Query dedupes on the
+  // key), so it costs nothing here. `useSmartDiff` is this tab's own fetch.
   const { data: smartDiff, isLoading: smartDiffLoading, isError: smartDiffError } =
     useSmartDiff(prId);
   const { data: reviews } = usePrReviews(prId);
   // Comments start hidden so the diff is clean by default — toggle to reveal.
   const [showComments, setShowComments] = React.useState(false);
+
+  // The severity markers in the diff read this, in BOTH orders: a finding is a
+  // property of the code, not of how the files happen to be sorted.
+  const findings = React.useMemo(() => liveFindings(reviews ?? []), [reviews]);
 
   const commentCount = comments?.length ?? 0;
 
@@ -118,7 +123,7 @@ export function DiffTab({
           onOpenFile={onOpenFile}
         />
       ) : (
-        <DiffViewer files={files} commenting={commenting} target={target} />
+        <DiffViewer files={files} commenting={commenting} findings={findings} target={target} />
       )}
     </section>
   );

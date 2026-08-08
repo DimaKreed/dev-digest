@@ -10,13 +10,13 @@
  * what keeps a chip's colour equal to the header chip that counted it.
  */
 import type {
+  FindingRecord,
   PrFile,
   ReviewRecord,
-  Severity,
   SmartDiffGroup,
   SmartDiffRole,
 } from "@devdigest/shared";
-import { SEVERITY_LEVELS, isLiveFinding, latestRunPerAgent } from "@/lib/severity";
+import { SEVERITY_LEVELS, liveFindings } from "@/lib/severity";
 
 /** Index the PR's files by path so a group can be mapped back onto them. */
 export function filesByPath(files: PrFile[]): Map<string, PrFile> {
@@ -38,27 +38,31 @@ export function groupPrFiles(group: SmartDiffGroup, byPath: Map<string, PrFile>)
 }
 
 /**
- * The most severe live finding covering `file`:`line`, or null.
+ * Every live finding covering `file`:`line`, most severe first.
  *
  * Matches on the NEW side range `[start_line, end_line]` — the same side
  * `lineInRange` and `commentTargetFor` use in the diff viewer.
+ *
+ * Returns the whole records rather than just their severity: the index row
+ * renders each finding's `title`, because a bare line number tells a reviewer
+ * WHERE to look and nothing about WHAT is wrong there, and the diff rows
+ * themselves carry no finding text (see `client/insights.md` — the Agent runs
+ * tab is otherwise the only surface with the text on it).
  */
-export function severityForLine(
+export function findingsForLine(
   reviews: ReviewRecord[],
   file: string,
   line: number,
-): Severity | null {
-  const hits = new Set<Severity>();
-  for (const review of latestRunPerAgent(reviews)) {
-    for (const finding of review.findings) {
-      if (finding.file !== file) continue;
-      if (!isLiveFinding(finding)) continue;
-      if (line < finding.start_line || line > finding.end_line) continue;
-      hits.add(finding.severity);
-    }
-  }
-  // SEVERITY_LEVELS is ordered most-severe-first, so the first hit wins.
-  return SEVERITY_LEVELS.find((level) => hits.has(level)) ?? null;
+): FindingRecord[] {
+  const hits = liveFindings(reviews).filter(
+    (f) => f.file === file && line >= f.start_line && line <= f.end_line,
+  );
+  // SEVERITY_LEVELS is ordered most-severe-first. Sorting by its index keeps a
+  // CRITICAL above a SUGGESTION on the same line; ties keep discovery order,
+  // which is `latestRunPerAgent`'s newest-first order.
+  return hits.sort(
+    (a, b) => SEVERITY_LEVELS.indexOf(a.severity) - SEVERITY_LEVELS.indexOf(b.severity),
+  );
 }
 
 /** Which group holds `path`, or null when no group does. */

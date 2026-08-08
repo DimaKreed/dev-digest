@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { SEV, type Severity } from "@devdigest/ui";
 import type { Line } from "./helpers";
 
 /** Co-located styles for the DiffViewer (extracted from inline styles). */
@@ -79,19 +80,56 @@ export function chevronFor(open: boolean): CSSProperties {
 
 /**
  * Row background per line kind (add/del tinted, others transparent).
- * A deep-link highlight LAYERS over that tint via an inset rail rather than
- * replacing the background — overwriting it would erase the add/del signal
- * and make the diff unreadable exactly where the reader is looking.
+ * A deep-link highlight and a finding severity both LAYER over that tint via an
+ * inset rail rather than replacing the background — overwriting it would erase
+ * the add/del signal and make the diff unreadable exactly where the reader is
+ * looking.
+ *
+ * When a line carries both, the rail shows the SEVERITY colour: the deep link is
+ * transient (it says "you just navigated here") while the severity is a property
+ * of the code, and the accent gradient still marks the navigation.
  */
-export function lineRowFor(kind: Line["kind"], highlighted?: boolean): CSSProperties {
+export function lineRowFor(
+  kind: Line["kind"],
+  highlighted?: boolean,
+  severity?: Severity | null,
+): CSSProperties {
   const tint = kind === "add" ? "var(--code-add)" : kind === "del" ? "var(--code-del)" : "transparent";
+  const sev = severity ? SEV[severity] : null;
+  const layers = [
+    highlighted ? "linear-gradient(var(--accent-bg), var(--accent-bg))" : null,
+    sev ? `linear-gradient(${sev.bg}, ${sev.bg})` : null,
+    tint,
+  ].filter(Boolean);
+  const rail = sev ? sev.c : highlighted ? "var(--accent)" : null;
   return {
     display: "flex",
     alignItems: "stretch",
     fontSize: 13,
     lineHeight: "20px",
-    background: highlighted ? `linear-gradient(var(--accent-bg), var(--accent-bg)), ${tint}` : tint,
-    boxShadow: highlighted ? "inset 3px 0 0 var(--accent)" : undefined,
+    background: layers.join(", "),
+    boxShadow: rail ? `inset 3px 0 0 ${rail}` : undefined,
+  };
+}
+
+/** The severity tag that sits at the right edge of a flagged line. */
+export function lineSeverityTagFor(severity: Severity): CSSProperties {
+  const sev = SEV[severity];
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+    alignSelf: "center",
+    marginRight: 10,
+    padding: "0 6px",
+    borderRadius: 4,
+    fontSize: 11,
+    fontWeight: 600,
+    lineHeight: "16px",
+    cursor: "help",
+    color: sev.c,
+    background: sev.bg,
   };
 }
 

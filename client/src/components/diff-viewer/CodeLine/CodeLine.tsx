@@ -3,10 +3,12 @@
 "use client";
 
 import React from "react";
+import type { FindingRecord } from "@devdigest/shared";
 import { commentTargetFor, type CommentThread, type DiffCommentApi, cs } from "../comments";
 import { type Line } from "../helpers";
 import { s, lineRowFor, lineSignFor } from "../styles";
 import { CommentThreadView } from "../CommentThreadView";
+import { FindingTag, FindingDetails } from "../FindingCallout";
 import { InlineComposer } from "../InlineComposer";
 
 export function CodeLine({
@@ -14,6 +16,8 @@ export function CodeLine({
   path,
   threads,
   commenting,
+  findings,
+  tagFindings,
   highlighted,
   scrollTo,
 }: {
@@ -21,6 +25,14 @@ export function CodeLine({
   path: string;
   threads: CommentThread[];
   commenting?: DiffCommentApi;
+  /** Live findings whose new-side range COVERS this line, most severe first.
+   *  The most severe one tints the row and draws the rail. Every covered row
+   *  gets this, because the tint is what shows the extent of the range. */
+  findings?: FindingRecord[];
+  /** Findings whose range STARTS at this row — the only rows that get a tag.
+   *  A finding spanning 15 lines would otherwise stamp 15 identical badges down
+   *  the right edge, which is noise, not information. */
+  tagFindings?: FindingRecord[];
   /** Inside the deep-linked line range. */
   highlighted?: boolean;
   /** Set (to the target's nonce) on the FIRST row of the range. This row
@@ -30,6 +42,7 @@ export function CodeLine({
 }) {
   const [hover, setHover] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
+  const [showFindings, setShowFindings] = React.useState(false);
   const rowRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -49,6 +62,10 @@ export function CodeLine({
   const target = commenting?.canComment ? commentTargetFor(ln) : null;
   const showAdd = hover && !!target && !composing;
 
+  // Most severe wins the row: one line can carry findings from several agents.
+  const flagged = findings?.[0];
+  const tagged = tagFindings ?? [];
+
   return (
     <div
       ref={rowRef}
@@ -56,7 +73,11 @@ export function CodeLine({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div data-highlighted={highlighted || undefined} style={lineRowFor(ln.kind, highlighted)}>
+      <div
+        data-highlighted={highlighted || undefined}
+        data-severity={flagged?.severity}
+        style={lineRowFor(ln.kind, highlighted, flagged?.severity)}
+      >
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
           {showAdd && target && (
             <button
@@ -77,7 +98,16 @@ export function CodeLine({
         <span className="mono" style={s.lineText}>
           {ln.text || " "}
         </span>
+        {tagged.length > 0 && (
+          <FindingTag
+            findings={tagged}
+            open={showFindings}
+            onToggle={() => setShowFindings((v) => !v)}
+          />
+        )}
       </div>
+
+      {showFindings && tagged.length > 0 && <FindingDetails findings={tagged} />}
 
       {commenting &&
         commenting.showComments &&
