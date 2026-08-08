@@ -65,6 +65,8 @@ nothing to build and no dist to keep in sync.
 - [../docs/agent-prompts/README.md](../docs/agent-prompts/README.md) — prompt authoring,
   severity rubric, verdict semantics, shipping checklist
 - [docs/](docs/) — design decisions, flows, ADRs
+- [../server/docs/smart-diff.md](../server/docs/smart-diff.md) — why `classifyPath` / `groupFiles`
+  live in this package rather than in a server module, and why they make no LLM call
 - [specs/](specs/) — intended behavior, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`

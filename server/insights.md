@@ -90,6 +90,22 @@ import erases at runtime but is still an import edge to dependency-cruiser. So f
 `ports.ts` re-exports from `db/rows.ts`, and `helpers.ts` and `repository.ts` both import inward
 from it. `src/modules/skills/ports.ts` _2026-08-03_
 
+### A new module whose tables another repository already owns ships NO `repository.ts` — a port the container's existing repo satisfies structurally
+**Symptom:** the onion skill's C1–C3 read as "a slice is `routes.ts` → `service.ts` → `repository.ts`
++ `ports.ts`", so a new `smart-diff` module looks like it needs a repository. Writing one puts a
+second repository over `pr_files`, `reviews` and `findings` — tables `ReviewRepository` already owns
+— which is exactly what C2 forbids. Both readings of the catalog cannot hold.
+**Rule:** C3 requires that a repository have a port and that the service depend on the interface; it
+does not require the slice to *contain* a repository. Declare the narrow read port in the new
+module's `ports.ts`, restating the row shapes structurally (never `db/rows.ts` — that is an import
+edge, see the entry above), and hand in the existing repo from the container at the route:
+`new SmartDiffService({ reads: app.container.reviewRepo })`. `reviewRepo` satisfies
+`SmartDiffReads` with no `implements`, no adapter and no mapper — `tsc` is the only thing that
+checks it, and `pnpm arch` is blind to the relationship for the same reason it is blind to `Db`
+arriving through `Container`. Reviewed and ruled compliant, not merely tolerated.
+`src/modules/smart-diff/ports.ts:51` · `src/modules/smart-diff/routes.ts:24`
+_2026-08-08_
+
 ## Tool & Library Notes
 
 ### A dependency-cruiser rule cannot see a type that arrives through the `Container` God object

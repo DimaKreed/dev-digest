@@ -81,6 +81,8 @@ even if `package.json` drifts locally.
 - [../TESTING.md](../TESTING.md) — suite map and CI lanes
 - [../docs/agent-prompts/README.md](../docs/agent-prompts/README.md) — reviewer prompt authoring
 - [docs/](docs/) — design decisions, flows, ADRs
+- [docs/smart-diff.md](docs/smart-diff.md) — why `smart-diff` ships no `repository.ts`, and the
+  three files that each restate the "last review" formula
 - [specs/](specs/) — intended behavior, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`

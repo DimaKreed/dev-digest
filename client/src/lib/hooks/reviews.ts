@@ -14,6 +14,7 @@ import type {
   ReviewRunResponse,
   RunEvent,
   RunSummary,
+  SmartDiff,
 } from "@devdigest/shared";
 
 // ---- Active (in-flight) runs — server-side source of truth ----
@@ -57,6 +58,23 @@ export function usePrReviews(prId: string | null | undefined, enabled = true) {
     queryKey: ["reviews", prId],
     queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
     enabled: !!prId && enabled,
+  });
+}
+
+// ---- Smart Diff: risk-ordered file groups for the Files changed tab ----
+/**
+ * The PR's changed files grouped `core` → `wiring` → `boilerplate`, with the
+ * lines the last review flagged.
+ *
+ * Deliberately NO `refetchInterval`: the server computes this from `pr_files`
+ * and findings already in the DB with no model call, so nothing settles
+ * asynchronously and there is nothing to poll for.
+ */
+export function useSmartDiff(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["smart-diff", prId],
+    queryFn: () => api.get<SmartDiff>(`/pulls/${prId}/smart-diff`),
+    enabled: !!prId,
   });
 }
 

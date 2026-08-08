@@ -56,6 +56,8 @@ pnpm build
 - [src/vendor/ui/README.md](src/vendor/ui/README.md) — design system, CSS-variable theming
 - [../TESTING.md](../TESTING.md) — suite map and CI lanes
 - [docs/](docs/) — design decisions, flows, ADRs
+- [../server/docs/smart-diff.md](../server/docs/smart-diff.md) — why `SmartDiffViewer` re-derives
+  per-line severity instead of the contract carrying it, and why it renders no diff rows of its own
 - [specs/](specs/) — intended behavior, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`

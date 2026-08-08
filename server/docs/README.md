@@ -12,4 +12,5 @@ Not here:
 
 ## Index
 
-_Empty. Add a link here when you add a document._
+- [Smart Diff](./smart-diff.md) — why the risk ordering is a pure classifier, why the slice
+  ships no `repository.ts`, and the three copies of the "last review" formula.

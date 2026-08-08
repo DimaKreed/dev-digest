@@ -25,6 +25,20 @@ export { groundFindings, groundingSummary, type GroundingResult } from './ground
 // Scope partitioning — the Intent Layer's post-grounding filter. Defers, never drops.
 export { partitionByScope, scopeSummary, type ScopePartition } from './scope.js';
 
+// Smart Diff — pure, deterministic risk-ordering of a PR's changed files. No LLM call.
+export {
+  classifyPath,
+  groupFiles,
+  type SmartDiffInputFile,
+  type SmartDiffFindingRef,
+} from './smart-diff.js';
+export {
+  SMART_DIFF_ROLE_ORDER,
+  SMART_DIFF_BOILERPLATE_PATTERNS,
+  SMART_DIFF_WIRING_PATTERNS,
+  SMART_DIFF_TOO_BIG_LINES,
+} from './constants.js';
+
 // Structured-output helpers (Zod → JSON Schema + parse-with-repair).
 export {
   toJsonSchema,

@@ -121,6 +121,13 @@ export default function PRDetailPage() {
   const targetRunIdForFinding =
     runs.find((r) => r.findings.some((f) => f.id === targetFindingId))?.run_id ?? null;
 
+  // File order on the Files changed tab lives in the URL, not component state, so
+  // a shared link preserves the order the sender was looking at. Smart is the
+  // default; only the explicit opt-out is written to `?order`.
+  const order = search.get("order") === "original" ? "original" : "smart";
+  const setOrder = (next: "smart" | "original") =>
+    setParam("order", next === "smart" ? null : next);
+
   const lineRange = parseLineRange(search.get("line"));
   const targetFile = search.get("file");
   const diffTarget: DiffTarget | null =
@@ -250,6 +257,9 @@ export default function PRDetailPage() {
             files={pr.files}
             canComment={pr.status === "open"}
             target={diffTarget}
+            order={order}
+            onSetOrder={setOrder}
+            onOpenFile={openFile}
           />
         )}
       </div>
