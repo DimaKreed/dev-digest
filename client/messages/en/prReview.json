@@ -68,8 +68,11 @@
     "largeTitle": "This PR is large ({lines} changed lines)",
     "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
     "filesCount": "{count} files",
-    "findingLines": "{count} finding-lines",
-    "groupedByRole": "Smart Diff · grouped by role"
+    "findingLines": "{count, plural, one {# flagged line} other {# flagged lines}}",
+    "findingsHidden": "{count, plural, one {# more flagged line not shown} other {# more flagged lines not shown}} — open the Agent runs tab for the full list",
+    "groupedByRole": "Smart Diff · grouped by role",
+    "smartOrder": "Smart order",
+    "originalOrder": "Original order"
   },
   "list": {
     "breadcrumb": "Pull Requests",

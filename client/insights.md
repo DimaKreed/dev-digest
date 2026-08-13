@@ -9,6 +9,23 @@ Maintained by the [engineering-insights](../.claude/skills/engineering-insights/
 
 ## What Works
 
+### "Behaviour X is unchanged" across a structural render change is provable — run the flow in both modes, not the props
+**Symptom:** Smart order replaces one whole-PR `DiffViewer` with **one per group**
+(`SmartDiffViewer.tsx:120`), so "inline comments still work in both orders" is a claim about
+rendered behaviour across a remount, and it was first reported as unverifiable. Asserting that the
+`commenting: DiffCommentApi` object is byte-identical between the two branches proves nothing — the
+object is the same, the tree it is handed to is not.
+**Rule:** render the component once per mode and drive the whole flow in each: reveal an existing
+anchored thread, then hover the added row → `+` → `InlineComposer` → post, asserting the
+`mutateAsync` payload (`{path, line, side: "RIGHT", body}`). Two notes for anyone repeating it — the
+hover affordance has no accessible name until its row is hovered and the `onMouseEnter` sits on
+`diff-viewer`'s unlabelled row wrapper, so the row is reached with two `parentElement` hops (real
+coupling to that markup, and there is no accessible query for an element with no role and no name);
+and the composer awaits `onSubmit` before clearing, so `waitForElementToBeRemoved(() =>
+screen.queryByRole("textbox"))` is the settle to await rather than wrapping in `act`.
+`_components/DiffTab/DiffTab.test.tsx`
+_2026-08-08_
+
 ## What Doesn't Work
 
 ### Styling an element cannot darken the widget the OS paints for it — only `color-scheme` can, and nothing declared it

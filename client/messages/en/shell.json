@@ -40,6 +40,14 @@
     "reply": "Reply",
     "viewOnGitHub": "View on GitHub",
     "postedToGitHub": "Posts to GitHub immediately",
-    "outdatedTitle": "{count} comment(s) on older revisions"
+    "outdatedTitle": "{count} comment(s) on older revisions",
+    "findingToggle": "{severity}: {title} — show details",
+    "findingSuggestion": "Suggested fix",
+    "severity": {
+      "_comment": "Keyed by the contract vocabulary (CRITICAL | WARNING | SUGGESTION); the words are the reviewer-facing ones. CRITICAL reads 'blocker' here because that is what it does to the gate — same word as countBlockers and the PR-list blockers count.",
+      "CRITICAL": "blocker",
+      "WARNING": "warning",
+      "SUGGESTION": "suggestion"
+    }
   }
 }

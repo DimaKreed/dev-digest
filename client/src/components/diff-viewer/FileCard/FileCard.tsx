@@ -5,7 +5,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
+import type { FindingRecord } from "@devdigest/shared";
 import type { PrFile } from "@/lib/types";
+import { SEVERITY_LEVELS } from "@/lib/severity";
 import { AUTO_EXPAND_MAX_LINES } from "../constants";
 import { parsePatch, lineInRange, type Line, type DiffTarget } from "../helpers";
 import {
@@ -18,6 +20,19 @@ import {
 import { s, chevronFor } from "../styles";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
+
+/**
+ * Findings whose new-side range covers a given parsed line, most severe first.
+ *
+ * Matched with `lineInRange` — the same predicate the deep-link highlight uses —
+ * so a finding's marker lands on exactly the rows `?file=&line=` would tint.
+ */
+function findingsForRenderedLine(ln: Line, findings: FindingRecord[]): FindingRecord[] {
+  if (findings.length === 0) return [];
+  return findings
+    .filter((f) => lineInRange(ln, f.start_line, f.end_line))
+    .sort((a, b) => SEVERITY_LEVELS.indexOf(a.severity) - SEVERITY_LEVELS.indexOf(b.severity));
+}
 
 /** Threads anchored to a given parsed line (RIGHT=new, LEFT=old). */
 function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): CommentThread[] {
@@ -33,10 +48,13 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
 export function FileCard({
   file,
   commenting,
+  findings,
   target,
 }: {
   file: PrFile;
   commenting?: DiffCommentApi;
+  /** This file's live findings (the caller filters by path). */
+  findings?: FindingRecord[];
   /** Non-null only for the deep-linked file. */
   target?: DiffTarget | null;
 }) {
@@ -84,6 +102,40 @@ export function FileCard({
     ? commenting.comments.filter((c) => c.path === file.path).length
     : 0;
 
+  // Two maps, keyed by row index: `covered` tints every row inside a finding's
+  // range, `tagged` carries the badge on the FIRST rendered row of that range
+  // only. "First rendered" rather than `start_line`, because a finding can start
+  // above the hunk this patch shows — the badge then lands on the first row the
+  // reader can actually see, instead of vanishing.
+  const { covered, tagged } = React.useMemo(() => {
+    const list = findings ?? [];
+    const covered = new Map<number, FindingRecord[]>();
+    const tagged = new Map<number, FindingRecord[]>();
+    if (list.length === 0) return { covered, tagged };
+
+    const firstRowOf = new Map<string, number>();
+    lines.forEach((ln, i) => {
+      const hits = findingsForRenderedLine(ln, list);
+      if (hits.length === 0) return;
+      covered.set(i, hits);
+      for (const f of hits) if (!firstRowOf.has(f.id)) firstRowOf.set(f.id, i);
+    });
+
+    for (const f of list) {
+      const row = firstRowOf.get(f.id);
+      if (row == null) continue;
+      const at = tagged.get(row);
+      if (at) at.push(f);
+      else tagged.set(row, [f]);
+    }
+    // Same order the row tint uses, so the badge names the finding that coloured
+    // the line rather than whichever one happened to be listed first.
+    for (const group of tagged.values()) {
+      group.sort((a, b) => SEVERITY_LEVELS.indexOf(a.severity) - SEVERITY_LEVELS.indexOf(b.severity));
+    }
+    return { covered, tagged };
+  }, [findings, lines]);
+
   return (
     <div ref={rootRef} data-file-path={file.path} style={s.fileCard}>
       <div onClick={() => setOpen((o) => !o)} style={s.fileHeader}>
@@ -117,6 +169,8 @@ export function FileCard({
                 path={file.path}
                 threads={threadsForLine(ln, matched)}
                 commenting={commenting}
+                findings={covered.get(i)}
+                tagFindings={tagged.get(i)}
                 highlighted={!!target && lineInRange(ln, target.start, target.end)}
                 scrollTo={i === scrollToIdx ? targetNonce : undefined}
               />

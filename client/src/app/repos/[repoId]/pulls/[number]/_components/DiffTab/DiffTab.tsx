@@ -1,10 +1,13 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { SectionLabel, Button } from "@devdigest/ui";
 import { DiffViewer, type DiffCommentApi, type DiffTarget } from "@/components/diff-viewer";
-import { usePrComments, useCreatePrComment } from "@/lib/hooks/reviews";
+import { usePrComments, useCreatePrComment, usePrReviews, useSmartDiff } from "@/lib/hooks/reviews";
 import { notify } from "@/lib/toast";
+import { liveFindings } from "@/lib/severity";
+import { SmartDiffViewer } from "../SmartDiffViewer";
 import type { PrFile } from "@devdigest/shared";
 
 interface DiffTabProps {
@@ -15,13 +18,37 @@ interface DiffTabProps {
   canComment?: boolean;
   /** `?file=…&line=…` deep link from a finding's file reference. */
   target?: DiffTarget | null;
+  /** File order, from `?order`. `"smart"` is the default; `"original"` opts out. */
+  order: "smart" | "original";
+  onSetOrder: (order: "smart" | "original") => void;
+  /** Deep-links a finding chip into the diff — bumps the target nonce upstream. */
+  onOpenFile: (file: string, startLine: number, endLine: number) => void;
 }
 
-export function DiffTab({ prId, filesCount, files, canComment, target }: DiffTabProps) {
+export function DiffTab({
+  prId,
+  filesCount,
+  files,
+  canComment,
+  target,
+  order,
+  onSetOrder,
+  onOpenFile,
+}: DiffTabProps) {
+  const t = useTranslations("prReview");
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
+  // `usePrReviews` shares the page's cache entry (TanStack Query dedupes on the
+  // key), so it costs nothing here. `useSmartDiff` is this tab's own fetch.
+  const { data: smartDiff, isLoading: smartDiffLoading, isError: smartDiffError } =
+    useSmartDiff(prId);
+  const { data: reviews } = usePrReviews(prId);
   // Comments start hidden so the diff is clean by default — toggle to reveal.
   const [showComments, setShowComments] = React.useState(false);
+
+  // The severity markers in the diff read this, in BOTH orders: a finding is a
+  // property of the code, not of how the files happen to be sorted.
+  const findings = React.useMemo(() => liveFindings(reviews ?? []), [reviews]);
 
   const commentCount = comments?.length ?? 0;
 
@@ -42,26 +69,62 @@ export function DiffTab({ prId, filesCount, files, canComment, target }: DiffTab
     },
   };
 
+  // Smart Diff must never be able to hide the diff: loading, an error, or an
+  // empty group set all fall back to the plain, previous rendering.
+  const smartUsable =
+    !smartDiffLoading && !smartDiffError && (smartDiff?.groups.length ?? 0) > 0;
+  const showSmart = order === "smart" && smartUsable;
+
   return (
     <section>
       <SectionLabel
         icon="Code"
         right={
-          commentCount > 0 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <Button
               kind="ghost"
               size="sm"
-              icon={showComments ? "EyeOff" : "Eye"}
-              onClick={() => setShowComments((v) => !v)}
+              active={order === "smart"}
+              disabled={!smartUsable}
+              onClick={() => onSetOrder("smart")}
             >
-              {showComments ? "Hide comments" : "Show comments"} ({commentCount})
+              {t("smartDiff.smartOrder")}
             </Button>
-          ) : undefined
+            <Button
+              kind="ghost"
+              size="sm"
+              active={order === "original"}
+              onClick={() => onSetOrder("original")}
+            >
+              {t("smartDiff.originalOrder")}
+            </Button>
+            {commentCount > 0 && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon={showComments ? "EyeOff" : "Eye"}
+                onClick={() => setShowComments((v) => !v)}
+              >
+                {showComments ? "Hide comments" : "Show comments"} ({commentCount})
+              </Button>
+            )}
+          </div>
         }
       >
         Files changed · {filesCount} files
       </SectionLabel>
-      <DiffViewer files={files} commenting={commenting} target={target} />
+      {showSmart && smartDiff ? (
+        <SmartDiffViewer
+          smartDiff={smartDiff}
+          files={files}
+          reviews={reviews ?? []}
+          commenting={commenting}
+          target={target}
+          onOpenFile={onOpenFile}
+        />
+      ) : (
+        <DiffViewer files={files} commenting={commenting} findings={findings} target={target} />
+      )}
     </section>
   );
 }

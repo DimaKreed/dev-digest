@@ -22,6 +22,20 @@ _2026-07-30_
 
 ## What Doesn't Work
 
+### A plan's done-when can name symbols that do not exist in the package it assigns the test to
+**Symptom:** a Development Plan required a server helper's counts to "agree with
+`countBySeverity(latestRunPerAgent(reviews))` on the same data" and assigned the check to the
+server unit lane. Both functions live only in `client/src/lib/severity.ts` (no occurrence anywhere
+under `server/src`), so no server test can reach them. The condition was not merely hard — it was
+unsatisfiable in its own lane, and the test that shipped compared against `rollupSeverities` plus a
+re-derivation written inside the test file, which `plan-verifier` correctly scored `partial`.
+**Rule:** when a done-when names a symbol, grep for it in the package that owns the assigned lane
+*before* writing the condition. For the severity formula specifically, the two copies are split by
+language and cannot be imported across (see the tally entry below): a parity assertion between them
+belongs in an integration test that hits the endpoint, or in a client test — never in a server unit
+test. `server/test/smart-diff.test.ts:125`
+_2026-08-08_
+
 ## Codebase Patterns
 
 ### A Zod field parsed back out of a jsonb column must be `.nullish()`, never `.nullable()`
@@ -60,6 +74,15 @@ fails loudly is the PR-list assertion in `server/test/reviews.it.test.ts` (next 
 one) — it is the only place the two definitions are checked against real data. Note the SCORE
 column deliberately keeps a different notion of "latest" (single newest review per PR).
 _2026-07-30_
+
+**Update:** it is now computed **three** times. `server/src/modules/smart-diff/helpers.ts:32`
+(`latestLiveFindings`) is the third, added because Smart Diff annotates file rows with the live
+findings' line numbers and `no-cross-module` forbids importing `pulls/status.ts`. Its header names
+the other two copies. Two things that third copy learned the hard way: `Array.prototype.sort` is
+stable, so two runs sharing a `created_at` leak the caller's row order into the output — the
+comparator needs a review-`id` tiebreak to be a total order; and the parity assertion the plan
+wanted against the *client* copy is not writable in a server unit test (see *What Doesn't Work*).
+Changing the rule is now a three-file edit. _2026-08-08_
 
 ## Tool & Library Notes
 
@@ -217,6 +240,31 @@ rather than as an empty result — or pass `grep -E` explicitly. The banner `rtk
 'rg' via PATH, falling back to direct exec` is the signal that this is in play, and it appears on
 stderr where a piped command will hide it.
 _2026-08-07_
+
+### A grep probe used as an acceptance criterion counts comment prose, so a header comment must not spell the identifier it forbids
+**Symptom:** a plan shipped probes like `grep -nE "container\.llm|openrouter|reviewPullRequest"
+server/src/modules/smart-diff/*.ts` → expect 0, as the mechanical form of "makes no model call". The
+files were clean, but the probes returned non-zero: the header comments *explained* the constraint
+by naming `container.llm`, `process.env` and `db/` in prose. The probe cannot tell an explanation
+from a violation.
+**Rule:** when a grep probe is a durable acceptance criterion, write the comment to *describe*
+rather than to quote — "this slice reaches no LLM adapter" instead of naming `container.llm`. Same
+for the ring-0 purity probes (`process.env`, `Date.now`, `fetch(`). If the identifier genuinely must
+appear in prose, the plan owns the fix: the probe needs a `--` exclusion or a `^[^/*]` anchor, and
+saying so beats quietly rewording it later. `server/src/modules/smart-diff/service.ts:1`
+_2026-08-08_
+
+### `.claude/skills/pr-self-review/invariants.md:36`'s `ci-filter-gap` WARNING is stale
+**Symptom:** that row asserts `.github/workflows/server-integration.yml` has no `reviewer-core/**`
+path filter, so a reviewer-core change could merge without the integration lane running. Acting on
+it means editing a workflow that is already correct.
+**Rule:** the filter is present under **both** `push.paths` (`server-integration.yml:24`) and
+`pull_request.paths` (`:29`), with a header comment at `:12-16` explaining why — verified
+independently by two agents on 2026-08-08. Do not edit the workflow. The invariants row is what
+needs correcting; until it is, treat a `ci-filter-gap` hit on the integration lane as noise and
+check the file. Row 37 makes a similar claim about `reviewer-core.yml` and
+`client/src/vendor/shared/**` that was **not** verified — check it before trusting either way.
+_2026-08-08_
 
 ### `server/package.json` is not under `skip-worktree`, whatever TESTING.md says
 **Symptom:** `TESTING.md:83-86` states the file is `skip-worktree` ("a local variant diverges from
