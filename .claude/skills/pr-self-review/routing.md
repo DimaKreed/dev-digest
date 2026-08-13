@@ -11,9 +11,10 @@ One lane per skill grouping. A lane runs **only if it matched at least one chang
 | `ui-tests` | `client/src/**/*.test.{ts,tsx}`, `client/vitest.config.ts`, `client/src/test/**` | `react-testing-library` |
 | `api-fastify` | `server/src/modules/*/routes.ts`, `server/src/app.ts`, `server/src/server.ts`, `server/src/modules/index.ts`, `server/src/platform/**` | `fastify-best-practices` |
 | `arch-onion` | anything under `server/src/modules/**`, `server/src/adapters/**`, `server/src/platform/**`, `server/src/db/**`, `reviewer-core/src/**` | `onion-architecture` |
+| `arch-mcp` | `mcp/src/**` | `onion-architecture` — same rings, but `pnpm arch` does not cover `mcp/`; verify with the grep probes in `mcp/README.md` |
 | `data-drizzle` | `server/src/db/schema/*.ts`, `server/src/db/schema.ts`, `server/drizzle.config.ts`, `server/src/db/{client,rows,migrate,seed}.ts`, `server/src/db/migrations/*.sql` | `drizzle-orm-patterns`, `postgresql-table-design` |
 | `contracts-zod` | `{server,client}/src/vendor/shared/**/*.ts` | `zod` |
-| `security` | `server/src/adapters/**`, `server/src/modules/*/routes.ts`, plus any diff introducing an endpoint, auth check, secret, file upload, or a new path from request input to a query, a shell, or the filesystem | `security` |
+| `security` | `server/src/adapters/**`, `mcp/src/adapters/**`, `server/src/modules/*/routes.ts`, plus any diff introducing an endpoint, auth check, secret, file upload, or a new path from request input to a query, a shell, or the filesystem | `security` |
 | `types` | `**/tsconfig.json`, `**/vitest.config.ts`, and any diff adding a generic, conditional type, `as` cast, or non-null `!` | `typescript-expert` |
 | `invariants` | always | no skill — [invariants.md](invariants.md) |
 

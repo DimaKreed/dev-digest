@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "devdigest": {
+      "command": "npm",
+      "args": ["--silent", "--prefix", "mcp", "run", "start"],
+      "env": { "DEVDIGEST_API_URL": "http://localhost:3001" }
+    }
+  }
+}

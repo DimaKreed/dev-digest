@@ -36,6 +36,20 @@ belongs in an integration test that hits the endpoint, or in a client test — n
 test. `server/test/smart-diff.test.ts:125`
 _2026-08-08_
 
+**Counterpart — a done-when is also unsatisfiable when the command it names fails on the empty
+state its own work item creates.** A scaffold item read "`cd mcp && npm install && npm run
+typecheck && npm test` exits 0 on an empty `src/`". It cannot: with the globs matching nothing,
+`tsc --noEmit -p tsconfig.json` exits non-zero with `error TS18003: No inputs were found in
+config file ... Specified 'include' paths were '["src/**/*.ts","test/**/*.ts"]'`. Vitest has the
+mirror-image quirk and needs `--passWithNoTests`, which the repo's npm packages already pass —
+so only half the command was ever going to be green.
+**Rule:** check a scaffold item's done-when against the state that item actually leaves behind,
+which for a package skeleton is zero source files. Either move the typecheck condition to the
+first item that writes a `.ts` file, or have the scaffold ship one. The generic form: a
+done-when naming a command needs the command run against the *expected* state, not merely
+against a plausible one. `mcp/package.json`
+_2026-08-13_
+
 ## Codebase Patterns
 
 ### A Zod field parsed back out of a jsonb column must be `.nullish()`, never `.nullable()`
@@ -240,6 +254,19 @@ rather than as an empty result — or pass `grep -E` explicitly. The banner `rtk
 'rg' via PATH, falling back to direct exec` is the signal that this is in play, and it appears on
 stderr where a piped command will hide it.
 _2026-08-07_
+
+**Counterpart — a probe can compile cleanly, write nothing to stderr, and still be a false
+negative, because the call site does not spell the identifier the way the probe does.**
+`fetch\(` over `mcp/src` returned `0 matches` while `mcp/src/adapters/http-client.ts` held two
+live references: the call reads `doFetch(`, and `fetch(` is not a substring of `doFetch(` under
+ripgrep's default case-sensitive matching. Neither half of the parent entry catches this — the
+pattern was valid and the tool was ripgrep.
+**Rule:** anchor an identifier probe on a word boundary rather than on a punctuation suffix —
+`\bfetch\b`, not `fetch\(`. Then prove the probe is live by checking it DOES hit the file that
+legitimately owns the call, not only that it misses everywhere else. A probe never observed to
+match anything has never been tested, and a `0` from it means nothing. The corrected set for
+that package is in `mcp/README.md`.
+_2026-08-13_
 
 ### A grep probe used as an acceptance criterion counts comment prose, so a header comment must not spell the identifier it forbids
 **Symptom:** a plan shipped probes like `grep -nE "container\.llm|openrouter|reviewPullRequest"

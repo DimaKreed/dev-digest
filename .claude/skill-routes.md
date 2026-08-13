@@ -24,6 +24,7 @@ column is `backend` + `backend-data`.
 | `frontend` | `client/src/**` | `frontend-ui-architecture` · `react-best-practices` · `next-best-practices` |
 | `frontend-tests` | `client/src/**/*.test.{ts,tsx}`, `client/vitest.config.ts`, `client/src/test/**` | `react-testing-library` · `frontend-ui-architecture` |
 | `core` | `reviewer-core/src/**` | `onion-architecture` · `zod` |
+| `mcp` | `mcp/src/**`, `mcp/test/**`, `.mcp.json` | `onion-architecture` · `zod` — the rings apply, but `pnpm arch` does **not** cover this package; its boundaries are grep probes (`mcp/README.md`) |
 | `contracts` | `server/src/vendor/shared/**`, `client/src/vendor/shared/**` | `zod` |
 | `e2e` | `e2e/**` | **no skill exists.** Follow [e2e/CLAUDE.md](../e2e/CLAUDE.md) and `e2e/docs/`, and say in the report that the lane had no skill. Never substitute an adjacent skill to fill the gap |
 | `docs` | any `*.md` under `<pkg>/docs/`, `<pkg>/specs/` or `docs/`, any `README.md`, `TESTING.md` | `mermaid-diagram` · then follow the routing table in [doc-writer.md](agents/doc-writer.md) for **which** directory owns the document |

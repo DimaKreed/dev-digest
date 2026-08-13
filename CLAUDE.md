@@ -1,6 +1,6 @@
 # DevDigest — AI code-review studio (course starter template)
 
-Four standalone packages, **no workspace / turbo / nx**. No root `package.json`.
+Five standalone packages, **no workspace / turbo / nx**. No root `package.json`.
 Install, test and build run **per directory**.
 
 **Before editing inside a module, read that module's `CLAUDE.md`.**
@@ -11,6 +11,7 @@ Install, test and build run **per directory**.
 | [client/](client/) | `@devdigest/web` — Next 15 App Router studio | 3000 | **pnpm** |
 | [reviewer-core/](reviewer-core/) | `@devdigest/reviewer-core` — pure review engine | — | **npm** |
 | [e2e/](e2e/) | `@devdigest/e2e` — browser flow specs | — | **npm** |
+| [mcp/](mcp/) | `@devdigest/mcp` — local stdio MCP server over the HTTP API | — (stdio) | **npm** |
 
 Mixing up pnpm/npm per directory is the most common mistake here.
 
@@ -41,6 +42,11 @@ Per-package commands live in each module's CLAUDE.md.
   Editing a contract means editing both — or deciding not to, on purpose.
 - **tsconfig paths are not honored by vitest.** Every alias is re-declared in each
   `vitest.config.ts`. Adding an alias ⇒ edit two files per package.
+- `mcp` is a **client** of the HTTP API, not a sibling of `server/`. It shares no source with
+  it: rather than a third `vendor/shared` copy or an alias into the server's, it declares its
+  own narrow, tolerant response schemas. So it has **no tsconfig alias** and **no cross-package
+  CI edge** — `.github/workflows/mcp.yml` filters `mcp/**` alone, and no other lane triggers
+  on it.
 - CI is path-filtered per package, with cross-package deps encoded by hand in
   `.github/workflows/` (`server-unit.yml` also triggers on `reviewer-core/**`).
 
