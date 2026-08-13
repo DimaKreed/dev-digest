@@ -76,3 +76,55 @@ export const CLEAN_REVIEW = {
 };
 
 export const pullsFor = (rows: unknown[] = [PULL]) => ({ [REPO.id]: rows });
+
+/**
+ * A healthy blast radius. `POST /pay` is reachable through BOTH changed symbols
+ * on purpose, so the de-duplication of the endpoint union is exercised by the
+ * default fixture rather than by a special case.
+ */
+export const BLAST_OK = {
+  changed_symbols: [
+    { name: 'rateLimit', file: 'src/api/rateLimit.ts', kind: 'function' },
+    { name: 'PaymentJob', file: 'src/jobs/payment.ts', kind: 'class' },
+  ],
+  downstream: [
+    {
+      symbol: 'rateLimit',
+      callers: [
+        {
+          name: 'publicRouter',
+          file: 'src/api/public/index.ts',
+          line: 23,
+          endpoints_affected: ['GET /health'],
+          crons_affected: [],
+        },
+        {
+          name: 'adminRouter',
+          file: 'src/api/admin/index.ts',
+          line: 41,
+          endpoints_affected: ['POST /pay'],
+          crons_affected: [],
+        },
+      ],
+      endpoints_affected: ['GET /health', 'POST /pay'],
+      crons_affected: [],
+    },
+    {
+      symbol: 'PaymentJob',
+      callers: [
+        {
+          name: 'scheduler',
+          file: 'src/jobs/scheduler.ts',
+          line: 9,
+          endpoints_affected: ['POST /pay'],
+          crons_affected: ['nightly-settlement'],
+        },
+      ],
+      endpoints_affected: ['POST /pay'],
+      crons_affected: ['nightly-settlement'],
+    },
+  ],
+  summary: 'Rate limiting on the public API and the settlement job.',
+  state: 'ok',
+  reason: null,
+};

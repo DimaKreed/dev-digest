@@ -20,7 +20,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
   apiTooSlow,
-  blastRadiusNotImplemented,
+  blastIndexIncomplete,
+  blastNoCallers,
+  blastNoSymbols,
+  blastNotIndexed,
   neverScanned,
   noFindingAtSeverity,
   noReviewYet,
@@ -36,13 +39,15 @@ import {
 } from '../domain/errors.js';
 import {
   formatAgents,
+  formatBlastRadius,
   formatConventions,
   formatReviews,
   formatRunResult,
   type ResponseFormat,
 } from '../domain/format.js';
-import { LIMITS } from '../domain/limits.js';
+import { CALLERS_PER_SYMBOL, LIMITS } from '../domain/limits.js';
 import type { Clock, DevDigestApi } from '../ports.js';
+import { getBlastRadius } from '../usecases/get-blast-radius.js';
 import { getConventions } from '../usecases/get-conventions.js';
 import { getFindings } from '../usecases/get-findings.js';
 import { listAgents } from '../usecases/list-agents.js';
@@ -71,8 +76,10 @@ function text(body: string, structured?: Record<string, unknown>): ToolResult {
  * never as a JSON-RPC error — the caller needs to read the recovery advice, and a
  * protocol error is not a place a model can read anything.
  */
-function errorText(body: string): ToolResult {
-  return { content: [{ type: 'text', text: body }], isError: true };
+function errorText(body: string, structured?: Record<string, unknown>): ToolResult {
+  return structured
+    ? { content: [{ type: 'text', text: body }], structuredContent: structured, isError: true }
+    : { content: [{ type: 'text', text: body }], isError: true };
 }
 
 function failureText(failure: UseCaseFailure): string {
@@ -403,24 +410,97 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     'devdigest_get_blast_radius',
     {
       description:
-        'NOT IMPLEMENTED — this tool always returns an error and never returns data. It is a placeholder for a future feature that will report which parts of a codebase a pull request\'s changes can affect. Do not call it. To reason about a pull request\'s risk today, use devdigest_get_findings for the review verdict and findings, and devdigest_get_conventions for the repository\'s mined rules.',
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+        "Trace what a pull request's changed code can reach: the symbols it changed, the callers of those symbols elsewhere in the repository, and the HTTP endpoints and scheduled jobs those callers sit behind. Instant and free — it reads the repository's existing code index and never builds one. Use it to answer \"what else could this break?\". It reports how complete that index was, and returns an ERROR rather than an empty list when the index could not answer, because a short answer from this tool would otherwise read as a measured \"small impact\". The repository must be imported and indexed in DevDigest first.",
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
       inputSchema: {
-        repo: z
-          .string()
-          .describe(
-            'Repository as "owner/name", spelled exactly as on GitHub, e.g. "acme/payments-api".',
-          ),
-        pr_number: z
+        repo: REPO_FIELD,
+        pr_number: PR_NUMBER_FIELD,
+        limit: z
           .number()
           .int()
           .min(1)
-          .describe('The pull request number shown on GitHub, e.g. 482.'),
+          .max(LIMITS.blast.max)
+          .optional()
+          .describe(
+            `Maximum affected symbols to return, widest reach first (default ${LIMITS.blast.default}). If the list is cut the response says how many were omitted; the counts are always over all of them.`,
+          ),
+        response_format: z
+          .enum(['concise', 'detailed'])
+          .optional()
+          .describe(
+            'concise: the counts, one line per affected symbol, and the endpoints and jobs affected. detailed: adds each caller\'s file:line and the endpoints that caller specifically reaches.',
+          ),
       },
     },
-    // Always an error, on every input. An empty success from a tool with this
-    // name would be read as a measured "no impact", which is the one conclusion
-    // that must not be drawn from an unimplemented feature.
-    async () => errorText(blastRadiusNotImplemented()),
+    async (args) => {
+      const format: ResponseFormat = args.response_format ?? 'concise';
+      const result = await getBlastRadius(deps, {
+        repo: args.repo,
+        prNumber: args.pr_number,
+        limit: args.limit ?? LIMITS.blast.default,
+      });
+      if (!result.ok) return errorText(failureText(result.failure));
+
+      const blast = result.value;
+      const structured = {
+        repo: args.repo,
+        pr_number: args.pr_number,
+        index_state: blast.indexState,
+        index_reason: blast.indexReason,
+        changed_symbols: blast.changedSymbols,
+        downstream: blast.downstream,
+        endpoints_affected: blast.endpoints,
+        crons_affected: blast.crons,
+        summary: blast.summary,
+        returned: blast.returned,
+        total: blast.total,
+        truncated: blast.truncated,
+        total_callers: blast.totalCallers,
+        empty_reason: blast.emptyReason,
+      };
+
+      // An index that could not answer is the one case that must NOT be a
+      // success. The stub errored on every input for this reason; implemented,
+      // it errors on exactly the inputs where the emptiness means nothing.
+      if (blast.emptyReason === 'not_indexed') {
+        return errorText(
+          blastNotIndexed(args.repo, args.pr_number, blast.indexState, blast.indexReason),
+          structured,
+        );
+      }
+      if (blast.emptyReason === 'no_symbols') {
+        return text(blastNoSymbols(args.repo, args.pr_number), structured);
+      }
+      if (blast.emptyReason === 'no_callers') {
+        return text(
+          blastNoCallers(args.repo, args.pr_number, blast.changedSymbols.length),
+          structured,
+        );
+      }
+
+      const body = formatBlastRadius(
+        {
+          symbolCount: blast.changedSymbols.length,
+          downstream: blast.downstream,
+          total: blast.total,
+          totalCallers: blast.totalCallers,
+          endpoints: blast.endpoints,
+          crons: blast.crons,
+          summary: blast.summary,
+          callersPerSymbol: CALLERS_PER_SYMBOL,
+        },
+        format,
+      );
+
+      // The qualifier goes FIRST. Truncation cuts from the end, so a caller who
+      // reads only the head of a long answer must still learn that the numbers
+      // below it are a lower bound.
+      return text(
+        blast.indexState === 'ok'
+          ? body
+          : `${blastIndexIncomplete(blast.indexState, blast.indexReason)}\n${body}`,
+        structured,
+      );
+    },
   );
 }

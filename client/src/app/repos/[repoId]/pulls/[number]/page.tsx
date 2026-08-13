@@ -14,6 +14,7 @@ import { PrDetailHeader } from "./_components/PrDetailHeader";
 import { OverviewTab } from "./_components/OverviewTab";
 import { FindingsTab } from "./_components/FindingsTab";
 import { DiffTab } from "./_components/DiffTab";
+import { BlastTab } from "./_components/BlastTab";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
 import { usePullDetail, usePulls } from "../../../../../lib/hooks";
 import { useQueryClient } from "@tanstack/react-query";
@@ -110,6 +111,14 @@ export default function PRDetailPage() {
         .filter((f) => f.out_of_scope === true && f.dismissed_at == null),
     [latestRuns],
   );
+  // Which files are in THIS PR's diff. The Files tab renders only those, so a
+  // blast-radius caller outside the set cannot be deep-linked there — BlastTab
+  // sends those to GitHub instead of producing a link that goes nowhere.
+  const prFilePaths = React.useMemo(
+    () => new Set((pr?.files ?? []).map((f) => f.path)),
+    [pr],
+  );
+
   const visibleRuns = severity ? latestRuns.filter((r) => runMatches(r, severity)) : runs;
   const setSeverity = (next: Severity | null) =>
     setParams({ severity: next ? next.toLowerCase() : null, tab: "findings" });
@@ -127,6 +136,11 @@ export default function PRDetailPage() {
   const order = search.get("order") === "original" ? "original" : "smart";
   const setOrder = (next: "smart" | "original") =>
     setParam("order", next === "smart" ? null : next);
+
+  // Blast radius view (tree | graph), in the URL for the same reason as ?order.
+  const blastView = search.get("view") === "graph" ? "graph" : "tree";
+  const setBlastView = (next: string) =>
+    setParam("view", next === "tree" ? null : next);
 
   const lineRange = parseLineRange(search.get("line"));
   const targetFile = search.get("file");
@@ -247,6 +261,18 @@ export default function PRDetailPage() {
               invalidateRunHistory();
               refetchReviews();
             }}
+          />
+        )}
+
+        {tab === "blast" && (
+          <BlastTab
+            prId={prId}
+            prFilePaths={prFilePaths}
+            repoFullName={repoFullName}
+            headSha={pr.head_sha}
+            onOpenFile={openFile}
+            view={blastView}
+            onSetView={setBlastView}
           />
         )}
 

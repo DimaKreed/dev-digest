@@ -37,9 +37,12 @@ npm run -s start    # stdio server; -s matters, see below
   `src/transport/tools.ts` and `src/domain/errors.ts`, are sized against the 2 KB truncation a
   client applies to each description and to `instructions`, and lead with the load-bearing
   sentence because truncation cuts from the end. Rewording one changes behaviour.
-- **`get_blast_radius` must keep returning `isError: true`.** An empty success from a tool
-  with that name reads to a model as a measured "no impact". Implementing it is the L04
-  homework; softening the stub is not.
+- **`get_blast_radius` must keep returning `isError: true` when the index is not `ok` and it
+  found nothing.** An empty success from a tool with that name reads to a model as a measured
+  "no impact". The stub errored on every input for this reason; implemented, it errors on
+  exactly the inputs where the emptiness is meaningless (`empty_reason: 'not_indexed'`, which
+  covers `partial` as well as `degraded`). Softening that branch to a success is the one
+  change this tool must not take. See README for the three-way split.
 - **Onion layering** applies here as it does in `server/`, with the ring map above. Two
   readings are deliberate: the MCP SDK is transport framework (rings 4–5, as Fastify is for
   the server), while a raw `fetch` is a true adapter and lives only in

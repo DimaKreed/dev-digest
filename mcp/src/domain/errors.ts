@@ -112,10 +112,45 @@ export function neverScanned(repo: string): string {
 }
 
 /**
- * The blast-radius stub's only output. It names the wrong inference explicitly,
- * because an empty success from a tool with this name would otherwise read as a
- * measured verdict of "no impact".
+ * The three empty blast-radius results, and they are not the same fact.
+ *
+ * A short or empty answer from a tool with this name reads as a measured verdict
+ * of "small impact". That is only true when the code index was complete, so each
+ * of these names its own cause and only ONE of them permits the conclusion.
  */
-export function blastRadiusNotImplemented(): string {
-  return `devdigest_get_blast_radius is not implemented yet. It returned no data — this is NOT a result meaning "this pull request has no blast radius", and you must not draw any conclusion about impact, risk, or scope from this response. For what is available today: call devdigest_get_findings for the review verdict and findings on this pull request, and devdigest_get_conventions for the repository's mined conventions.`;
+export function blastNotIndexed(
+  repo: string,
+  prNumber: number,
+  status: string,
+  reason: string | null,
+): string {
+  const because = reason ? ` Reason: ${reason}.` : '';
+  return `The code index for "${repo}" is ${status} (stale, unavailable, or incomplete), so no blast radius could be computed for #${prNumber}.${because} This is NOT a result meaning "this pull request has no downstream impact" — you must not draw any conclusion about impact, risk, or scope from it. Re-index the repository in the DevDigest web app, then call this tool again.`;
+}
+
+export function blastNoSymbols(repo: string, prNumber: number): string {
+  return `No analysable code symbols changed in ${repo} #${prNumber}, so there is nothing to trace callers from. This usually means the diff touches only configuration, documentation or data files. It does NOT mean the change is safe — call devdigest_get_findings for the review's own verdict.`;
+}
+
+/** The one empty answer that IS a measured result — and it says so. */
+export function blastNoCallers(repo: string, prNumber: number, symbolCount: number): string {
+  return `${symbolCount} changed symbol(s) in ${repo} #${prNumber}, and the code index found no callers of any of them. The index covered every changed file, so this is a measured result: nothing else in this repository calls the changed code. Callers outside this repository are not visible to it.`;
+}
+
+/**
+ * Prefixed to EVERY result, empty or not, when the index was incomplete. A
+ * caller list computed from a partial index understates impact by an unknown
+ * amount, and a number without that qualifier is read as exact.
+ */
+export function blastIndexIncomplete(status: string, reason: string | null): string {
+  const because = reason ? ` Reason: ${reason}.` : '';
+  return `WARNING — the code index was ${status} when this was computed, so the list below is INCOMPLETE by an unknown amount.${because} Treat every count here as a lower bound, never as the full impact.`;
+}
+
+export function blastTruncated(
+  returned: number,
+  total: number,
+  callersPerSymbol: number,
+): string {
+  return `Showing ${returned} of ${total} affected symbols, and at most ${callersPerSymbol} callers each. Raise limit to see more symbols; the counts above are over all of them.`;
 }

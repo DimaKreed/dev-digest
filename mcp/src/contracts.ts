@@ -182,6 +182,57 @@ export const ConventionListResponse = z.object({
 });
 export type ConventionListResponse = z.infer<typeof ConventionListResponse>;
 
+/** Mirrors `contracts/brief.ts` → `ChangedSymbol`. */
+export const ChangedSymbolBrief = z.object({
+  name: z.string(),
+  file: z.string(),
+  kind: z.string().nullish(),
+});
+export type ChangedSymbolBrief = z.infer<typeof ChangedSymbolBrief>;
+
+/**
+ * Mirrors `contracts/review-api.ts` → `BlastCallerNode`.
+ *
+ * `line` is nullish here although the canonical contract requires it: a caller
+ * located without a position is still a real call site, and dropping it over a
+ * missing number would understate impact — the one error this tool must not make.
+ */
+export const BlastCallerBrief = z.object({
+  name: z.string(),
+  file: z.string(),
+  line: z.number().int().nullish(),
+  endpoints_affected: z.array(z.string()).nullish(),
+  crons_affected: z.array(z.string()).nullish(),
+});
+export type BlastCallerBrief = z.infer<typeof BlastCallerBrief>;
+
+/** Mirrors `contracts/review-api.ts` → `DownstreamNode`. */
+export const DownstreamImpactBrief = z.object({
+  symbol: z.string(),
+  callers: z.array(BlastCallerBrief).nullish(),
+  endpoints_affected: z.array(z.string()).nullish(),
+  crons_affected: z.array(z.string()).nullish(),
+});
+export type DownstreamImpactBrief = z.infer<typeof DownstreamImpactBrief>;
+
+/**
+ * Mirrors `contracts/review-api.ts` → `BlastRadiusResponse`.
+ *
+ * `state` stays a bare string rather than the canonical enum, for the reason
+ * `RunBrief.status` does: an unrecognised value must degrade into the cautious
+ * branch, not fail the parse. It is `.nullish()` too, and an ABSENT state is
+ * read as degraded — a server that will not say how complete its index is, is
+ * exactly the case where a short caller list must not be trusted.
+ */
+export const BlastRadiusBrief = z.object({
+  changed_symbols: z.array(ChangedSymbolBrief).nullish(),
+  downstream: z.array(DownstreamImpactBrief).nullish(),
+  summary: z.string().nullish(),
+  state: z.string().nullish(),
+  reason: z.string().nullish(),
+});
+export type BlastRadiusBrief = z.infer<typeof BlastRadiusBrief>;
+
 /** Mirrors `contracts/platform.ts` → `ApiErrorBody`. Every route uses it. */
 export const ApiError = z.object({
   error: z.object({

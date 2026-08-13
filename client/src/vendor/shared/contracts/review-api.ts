@@ -108,10 +108,11 @@ export type DownstreamNode = z.infer<typeof DownstreamNode>;
  * two pull requests relate, which only a model can write, so it arrives later
  * from `POST /pulls/:id/blast/history-notes`. `notes_state` is what separates
  * "not asked for" from "asked, and there was nothing to say".
+ *
+ * `merged_at` carries `pull_requests.updated_at`: there is no merge timestamp
+ * column, and `status = 'merged'` is the only merge signal stored.
  */
-export const PriorPr = PrHistoryItem.extend({
-  author_avatar: z.string().nullable(),
-});
+export const PriorPr = PrHistoryItem;
 export type PriorPr = z.infer<typeof PriorPr>;
 
 /**

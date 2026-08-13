@@ -2,13 +2,14 @@
  * Ring 1 — the ports the use cases depend on. Implementations live in ring 3
  * (`src/adapters/`); nothing here knows how they are implemented.
  *
- * Both ports are deliberately narrow: `DevDigestApi` carries exactly the seven
+ * Both ports are deliberately narrow: `DevDigestApi` carries exactly the eight
  * calls the five tools make, and grows only when a tool needs a genuinely new
  * one. A port that mirrors a whole API forces every fake to stub methods no test
  * exercises.
  */
 import type {
   AgentBrief,
+  BlastRadiusBrief,
   ConventionListResponse,
   PrBrief,
   RepoBrief,
@@ -58,6 +59,7 @@ export interface DevDigestApi {
   listRuns(prId: string): Promise<ApiResult<RunBrief[]>>;
   listReviews(prId: string): Promise<ApiResult<ReviewBrief[]>>;
   listConventions(repoId: string): Promise<ApiResult<ConventionListResponse>>;
+  getBlastRadius(prId: string): Promise<ApiResult<BlastRadiusBrief>>;
 }
 
 /**

@@ -30,7 +30,15 @@ export const LIMITS = {
   agents: { default: 20, max: 50 },
   findings: { default: 25, max: 100 },
   conventions: { default: 15, max: 50 },
+  blast: { default: 20, max: 100 },
 } as const;
+
+/**
+ * Caller rows printed per affected symbol. A hot utility can have hundreds of
+ * call sites, and printing them all buries the symbols that have three. The
+ * caller COUNT is always reported in full even when the list is cut.
+ */
+export const CALLERS_PER_SYMBOL = 5;
 
 /** Severity order, most severe first. The sort key for every findings list. */
 export const SEVERITY_ORDER = ['CRITICAL', 'WARNING', 'SUGGESTION'] as const;

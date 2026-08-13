@@ -13,6 +13,7 @@
  */
 import {
   AgentBrief,
+  BlastRadiusBrief,
   ConventionListResponse,
   PrBrief,
   RepoBrief,
@@ -49,6 +50,8 @@ export interface FakeApiOptions {
   pulls?: Record<string, unknown[]>;
   reviews?: unknown[];
   conventions?: unknown;
+  /** The blast-radius payload `getBlastRadius` returns. */
+  blast?: unknown;
   /**
    * Run rows to return per `listRuns` call, 1-based. The last entry repeats
    * forever, which is how "never leaves running" is expressed.
@@ -78,6 +81,9 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
   const conventions = ConventionListResponse.parse(
     options.conventions ?? { candidates: [], last_scan_at: null },
   );
+  const blast = BlastRadiusBrief.parse(
+    options.blast ?? { changed_symbols: [], downstream: [], summary: null, state: 'ok' },
+  );
 
   const calls = { listRuns: 0, startReview: 0, listReviews: 0 };
 
@@ -92,6 +98,7 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
     listRepos: async () => answer('listRepos', repos),
     listPulls: async (repoId) => answer('listPulls', pulls[repoId] ?? []),
     listConventions: async () => answer('listConventions', conventions),
+    getBlastRadius: async () => answer('getBlastRadius', blast),
     listReviews: async () => {
       calls.listReviews += 1;
       return answer('listReviews', reviews);

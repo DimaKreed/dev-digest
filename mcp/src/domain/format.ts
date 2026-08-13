@@ -9,7 +9,7 @@
  * detail into the core — the transport layer wraps these strings instead.
  */
 import type { AgentBrief, ConventionBrief, FindingBrief, ReviewBrief } from '../contracts.js';
-import { findingsTruncated, listTruncated } from './errors.js';
+import { blastTruncated, findingsTruncated, listTruncated } from './errors.js';
 
 export type ResponseFormat = 'concise' | 'detailed';
 
@@ -122,6 +122,71 @@ export function formatConventions(
 
   if (conventions.length < total) {
     lines.push(listTruncated(conventions.length, total, 'conventions'));
+  }
+  return lines.join('\n');
+}
+
+/** One affected symbol, as `get-blast-radius` projects it. */
+export interface BlastImpactView {
+  symbol: string;
+  callers: { name: string; file: string; line: number | null; endpoints: string[] }[];
+  callerCount: number;
+  endpoints: string[];
+  crons: string[];
+}
+
+/**
+ * The blast radius as a caller reads it.
+ *
+ * The endpoint and job unions print in BOTH formats, at the end. An affected
+ * endpoint is the load-bearing fact of this tool, and hiding it behind
+ * `detailed` would make the default answer omit the one thing the question was
+ * asked to learn. `detailed` adds the per-caller file:line rows.
+ */
+export function formatBlastRadius(
+  args: {
+    symbolCount: number;
+    downstream: BlastImpactView[];
+    total: number;
+    totalCallers: number;
+    endpoints: string[];
+    crons: string[];
+    summary: string | null;
+    callersPerSymbol: number;
+  },
+  format: ResponseFormat,
+): string {
+  const lines: string[] = [
+    `${args.symbolCount} changed symbol(s) · ${args.totalCallers} caller(s) · ` +
+      `${args.endpoints.length} endpoint(s) · ${args.crons.length} job(s).`,
+  ];
+  if (args.summary) lines.push(args.summary);
+
+  for (const impact of args.downstream) {
+    const shown =
+      impact.callers.length < impact.callerCount
+        ? ` (${impact.callerCount} callers, showing ${impact.callers.length})`
+        : ` (${impact.callerCount} caller(s))`;
+    lines.push(`${impact.symbol}${shown}`);
+    if (format !== 'detailed') continue;
+
+    for (const caller of impact.callers) {
+      const at = caller.line == null ? '' : `:${caller.line}`;
+      lines.push(`    ${caller.file}${at}  ${caller.name}`);
+      if (caller.endpoints.length > 0) {
+        lines.push(`        reaches: ${caller.endpoints.join(', ')}`);
+      }
+    }
+    if (impact.crons.length > 0) lines.push(`    jobs: ${impact.crons.join(', ')}`);
+  }
+
+  if (args.endpoints.length > 0) {
+    lines.push(`Endpoints affected: ${args.endpoints.join(', ')}`);
+  }
+  if (args.crons.length > 0) lines.push(`Jobs affected: ${args.crons.join(', ')}`);
+
+  if (args.downstream.length < args.total) {
+    lines.push(blastTruncated(args.downstream.length, args.total, args.callersPerSymbol));
   }
   return lines.join('\n');
 }

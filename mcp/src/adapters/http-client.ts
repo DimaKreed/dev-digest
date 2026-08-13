@@ -18,6 +18,7 @@ import { z } from 'zod';
 import {
   AgentBrief,
   ApiError,
+  BlastRadiusBrief,
   ConventionListResponse,
   PrBrief,
   RepoBrief,
@@ -105,6 +106,7 @@ export function createHttpApi(options: HttpApiOptions): DevDigestApi {
     listReviews: (prId) => request(z.array(ReviewBrief), `/pulls/${id(prId)}/reviews`),
     listConventions: (repoId) =>
       request(ConventionListResponse, `/repos/${id(repoId)}/conventions`),
+    getBlastRadius: (prId) => request(BlastRadiusBrief, `/pulls/${id(prId)}/blast`),
     startReview: (prId, agentId) =>
       request(StartReviewResponse, `/pulls/${id(prId)}/review`, {
         method: 'POST',

@@ -28,19 +28,32 @@ npm run -s start                 # speaks JSON-RPC on stdin/stdout
 | `devdigest_run_agent_on_pr` | **yes** | Runs one reviewer and **blocks up to 120 s** for the result. |
 | `devdigest_get_findings` | no | Reads a review that already finished. Also the recovery path after a timeout. |
 | `devdigest_get_conventions` | no | The house rules mined from the repository's own code. |
-| `devdigest_get_blast_radius` | no | **Not implemented.** Always returns an error, on purpose. |
+| `devdigest_get_blast_radius` | no | What the changed symbols reach: callers, endpoints, scheduled jobs. |
 
 Every tool addresses a pull request the way a person does — `repo` as `"owner/name"` plus
 `pr_number` — and resolves the API's UUIDs internally. Every list-returning tool takes
 `response_format` (`concise` by default) and a bounded `limit`, and says how to narrow the
 request when it truncates.
 
-### Why the blast-radius stub errors
+### Why blast radius still errors on an unusable index
 
 An empty success from a tool called "blast radius" reads to a model as a measured verdict of
-*no impact*. So the stub returns `isError: true` with text that names that wrong inference
-explicitly and points at the two tools that do work. Implementing it for real is the L04
-homework.
+*no impact*. That is why the stub returned `isError: true`, and the reason survives its
+implementation: the tool now returns data, but an index that is **degraded or partial and
+produced no callers is still an error**, with text that names the wrong inference explicitly.
+
+Three empty results are kept apart, and only one of them is a success:
+
+| `empty_reason` | Means | Result |
+|---|---|---|
+| `not_indexed` | The index could not answer. The emptiness carries no information. | `isError: true` |
+| `no_symbols` | The diff changed no analysable code (config, docs, data). | success |
+| `no_callers` | A healthy index found the symbols and nothing calls them. | success |
+
+Only `no_callers` is allowed to say "the index covered every changed file, so this is a
+measured result" — which is why a *partial* index with zero callers reports `not_indexed`
+rather than `no_callers`. When the index is incomplete but did find something, every answer
+is prefixed with a warning that the counts below it are a lower bound.
 
 ## How the blocking run works
 
