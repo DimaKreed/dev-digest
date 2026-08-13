@@ -436,6 +436,25 @@ export class RepoIntelRepository {
       .where(eq(t.fileEdges.repoId, repoId));
   }
 
+  /**
+   * Reverse import edges: every file that IMPORTS any of `files`.
+   *
+   * Served by `file_edges_repo_to_idx (repo_id, to_file)`, so this is O(degree)
+   * of the given files rather than O(repo) — which is why blast does not reuse
+   * `getEdges` and invert it in memory: that would ship every edge of a 5000-file
+   * repo to answer a question about ten changed files.
+   *
+   * `toFile` comes back so the caller can attribute each importer to the seed it
+   * was reached from without a second query.
+   */
+  async getReverseEdges(repoId: string, files: string[]): Promise<IndexerEdgeRow[]> {
+    if (files.length === 0) return [];
+    return this.db
+      .select({ fromFile: t.fileEdges.fromFile, toFile: t.fileEdges.toFile })
+      .from(t.fileEdges)
+      .where(and(eq(t.fileEdges.repoId, repoId), inArray(t.fileEdges.toFile, files)));
+  }
+
   /** `{path, percentile}` for the given paths (smart-diff / run-executor). */
   async getFileRankFor(repoId: string, paths: string[]): Promise<FileRankRow[]> {
     if (paths.length === 0) return [];

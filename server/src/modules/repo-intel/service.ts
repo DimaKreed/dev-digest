@@ -39,6 +39,8 @@ import type {
   RefRow,
   RepoIntel,
   RepoMapResult,
+  ReverseImpactResult,
+  ReverseImpactRow,
   SignatureRow,
   SymbolRow,
 } from './types.js';
@@ -48,6 +50,7 @@ import {
   INDEX_JOB_KIND,
   INDEXER_VERSION,
   MAX_CALLERS_PER_SYMBOL,
+  MAX_REVERSE_FANOUT,
   REFRESH_JOB_KIND,
   RESYNC_JOB_KIND,
   SUPPORTED_EXT,
@@ -301,6 +304,75 @@ export class RepoIntelService implements RepoIntel {
       degraded: true,
       reason: 'no_data',
     };
+  }
+
+  /**
+   * Reverse-import impact: BFS outward over `file_edges`, seeded from `files`.
+   *
+   * Seeded from the CALLER files rather than the changed files on purpose. From
+   * the changed files, level 1 would land on the callers themselves — which the
+   * reference-based attribution in `getBlastRadius` already covers — so the walk
+   * would buy exactly one new hop. Seeded from the callers, both hops are new.
+   *
+   * `origins` doubles as the visited set (so cycles terminate) and as the
+   * attribution carrier (so an endpoint found two hops out is still traced back
+   * to the caller, and therefore to the changed symbol, it belongs to).
+   *
+   * Costs exactly BFS_DEPTH queries plus one facts read, regardless of how many
+   * files are involved.
+   */
+  async getReverseImpact(repoId: string, files: string[]): Promise<ReverseImpactResult> {
+    if (!this.container.config.repoIntelEnabled || files.length === 0) {
+      return { rows: [], truncatedFrom: [] };
+    }
+
+    const origins = new Map<string, Set<string>>();
+    const depthOf = new Map<string, number>();
+    const truncatedFrom: string[] = [];
+
+    // A seed is its own origin at depth 0: a caller file that itself declares a
+    // route still contributes, so this walk is a superset of the direct
+    // attribution rather than a replacement for it.
+    for (const f of files) {
+      origins.set(f, new Set([f]));
+      depthOf.set(f, 0);
+    }
+
+    let frontier = [...files];
+    for (let depth = 1; depth <= BFS_DEPTH && frontier.length > 0; depth += 1) {
+      const edges = await this.repo.getReverseEdges(repoId, frontier);
+      const next: string[] = [];
+      for (const e of edges) {
+        const seedOrigins = origins.get(e.toFile);
+        if (!seedOrigins) continue;
+        const seen = origins.get(e.fromFile);
+        if (seen) {
+          // Already reached by a shorter or equal path — merge provenance only.
+          for (const o of seedOrigins) seen.add(o);
+          continue;
+        }
+        if (origins.size >= MAX_REVERSE_FANOUT) {
+          if (!truncatedFrom.includes(e.toFile)) truncatedFrom.push(e.toFile);
+          continue;
+        }
+        origins.set(e.fromFile, new Set(seedOrigins));
+        depthOf.set(e.fromFile, depth);
+        next.push(e.fromFile);
+      }
+      frontier = next;
+    }
+
+    // Only files carrying endpoints/crons come back from getFileFacts, so the
+    // reached set is filtered down to the interesting rows for free.
+    const facts = await this.repo.getFileFacts(repoId, [...origins.keys()]);
+    const rows: ReverseImpactRow[] = facts.map((f) => ({
+      file: f.filePath,
+      depth: depthOf.get(f.filePath) ?? 0,
+      originFiles: [...(origins.get(f.filePath) ?? [])],
+      endpoints: f.endpoints,
+      crons: f.crons,
+    }));
+    return { rows, truncatedFrom };
   }
 
   /**

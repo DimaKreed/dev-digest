@@ -1,8 +1,8 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { PullRow } from '../../../db/rows.js';
-import type { IntentUpsert, StoredIntent } from '../ports.js';
+import type { IntentUpsert, PriorPrRow, StoredIntent } from '../ports.js';
 
 // ---- PR lookup (workspace-scoped) -----------------------------------------
 
@@ -31,6 +31,55 @@ export async function getPrFiles(
   prId: string,
 ): Promise<(typeof t.prFiles.$inferSelect)[]> {
   return db.select().from(t.prFiles).where(eq(t.prFiles.prId, prId));
+}
+
+/**
+ * Merged PRs of the same repo that touched any of `paths`, newest first.
+ *
+ * One query: join the file rows of other PRs against the given paths, then
+ * collapse to one row per PR carrying the overlapping subset. `array_agg` runs
+ * over the join, so `files_overlap` is exactly the intersection — the same list
+ * the UI shows as chips.
+ *
+ * Reads no code index, so this works even when the blast radius itself is
+ * degraded: which PRs touched a file is plain PR history.
+ */
+export async function getPriorPrs(
+  db: Db,
+  repoId: string,
+  prId: string,
+  paths: string[],
+  limit: number,
+): Promise<PriorPrRow[]> {
+  if (paths.length === 0) return [];
+  const rows = await db
+    .select({
+      number: t.pullRequests.number,
+      title: t.pullRequests.title,
+      author: t.pullRequests.author,
+      mergedAt: t.pullRequests.updatedAt,
+      filesOverlap: sql<string[]>`array_agg(distinct ${t.prFiles.path})`,
+    })
+    .from(t.pullRequests)
+    .innerJoin(t.prFiles, eq(t.prFiles.prId, t.pullRequests.id))
+    .where(
+      and(
+        eq(t.pullRequests.repoId, repoId),
+        ne(t.pullRequests.id, prId),
+        eq(t.pullRequests.status, 'merged'),
+        inArray(t.prFiles.path, paths),
+      ),
+    )
+    .groupBy(
+      t.pullRequests.id,
+      t.pullRequests.number,
+      t.pullRequests.title,
+      t.pullRequests.author,
+      t.pullRequests.updatedAt,
+    )
+    .orderBy(desc(t.pullRequests.updatedAt))
+    .limit(limit);
+  return rows.map((r) => ({ ...r, filesOverlap: r.filesOverlap ?? [] }));
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   Finding,
   Intent,
   BlastRadius,
+  BlastRadiusResponse,
   Risks,
   PrHistory,
   SmartDiff,
@@ -91,6 +92,43 @@ describe('AI contracts parse fixtures', () => {
     expect(() =>
       Risks.parse({
         risks: [{ kind: 'security', title: 't', explanation: 'e', severity: 'high', file_refs: [] }],
+      }),
+    ).not.toThrow();
+    // A bare BlastRadius is NOT a valid blast response: without `state`, an
+    // empty `downstream` cannot be told apart from a broken index. Requiring the
+    // field is what stops that regression from being reintroduced silently.
+    expect(() =>
+      BlastRadiusResponse.parse({
+        changed_symbols: [],
+        downstream: [],
+        summary: 's',
+      }),
+    ).toThrow();
+    expect(() =>
+      BlastRadiusResponse.parse({
+        changed_symbols: [{ name: 'rateLimit', file: 'a.ts', kind: 'function' }],
+        downstream: [
+          {
+            symbol: 'rateLimit',
+            callers: [
+              {
+                name: 'publicRouter',
+                file: 'b.ts',
+                line: 23,
+                endpoints_affected: ['GET /x'],
+                crons_affected: [],
+              },
+            ],
+            endpoints_affected: ['GET /x'],
+            crons_affected: [],
+          },
+        ],
+        summary: 's',
+        state: 'partial',
+        reason: 'index_partial',
+        truncated_files: [],
+        prior_prs: [],
+        notes_state: 'absent',
       }),
     ).not.toThrow();
     expect(() =>

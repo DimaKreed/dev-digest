@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { Finding, Verdict } from './findings.js';
-import { Intent, SmartDiff } from './brief.js';
+import {
+  BlastCaller,
+  BlastRadius,
+  DownstreamImpact,
+  Intent,
+  PrHistoryItem,
+  SmartDiff,
+} from './brief.js';
 
 /**
  * A2 — Review-Core API surface contracts. These extend the core
@@ -63,3 +70,71 @@ export type PrIntentRecord = z.infer<typeof PrIntentRecord>;
 /** Smart-diff response for a PR (the SmartDiff). */
 export const SmartDiffResponse = SmartDiff;
 export type SmartDiffResponse = z.infer<typeof SmartDiffResponse>;
+
+/**
+ * How much of the code index backed a blast result. Three states, never
+ * collapsed into a boolean:
+ *   ok       — the index covered every changed file; the lists below are complete.
+ *   partial  — the index exists but is incomplete. What IS listed is true; what
+ *              is missing is NOT knowable from an empty array.
+ *   degraded — no usable index. An empty `downstream` here is the absence of a
+ *              measurement, not a measurement of absence.
+ */
+export const BlastState = z.enum(['ok', 'partial', 'degraded']);
+export type BlastState = z.infer<typeof BlastState>;
+
+/**
+ * One caller, carrying the endpoints and jobs attributed to ITS OWN file.
+ *
+ * `DownstreamImpact.endpoints_affected` is a flat per-symbol union, which loses
+ * which caller reaches which endpoint. A graph view reading only that union has
+ * to assume every caller reaches every endpoint and draws the complete bipartite
+ * product (4 callers x 3 endpoints = 12 edges) in place of the real 5.
+ */
+export const BlastCallerNode = BlastCaller.extend({
+  endpoints_affected: z.array(z.string()).default([]),
+  crons_affected: z.array(z.string()).default([]),
+});
+export type BlastCallerNode = z.infer<typeof BlastCallerNode>;
+
+export const DownstreamNode = DownstreamImpact.extend({
+  callers: z.array(BlastCallerNode),
+});
+export type DownstreamNode = z.infer<typeof DownstreamNode>;
+
+/**
+ * A merged PR that touched the same files. `notes` is `''` on the main read —
+ * that path costs nothing and reaches no model. A note is prose about how the
+ * two pull requests relate, which only a model can write, so it arrives later
+ * from `POST /pulls/:id/blast/history-notes`. `notes_state` is what separates
+ * "not asked for" from "asked, and there was nothing to say".
+ */
+export const PriorPr = PrHistoryItem.extend({
+  author_avatar: z.string().nullable(),
+});
+export type PriorPr = z.infer<typeof PriorPr>;
+
+/**
+ * Response of `GET /pulls/:id/blast`.
+ *
+ * Extends `BlastRadius` rather than editing it: that contract is a member of
+ * `PrBrief` and is parsed from stored documents, so a new required field there
+ * would break every one of them.
+ */
+export const BlastRadiusResponse = BlastRadius.extend({
+  downstream: z.array(DownstreamNode),
+  state: BlastState,
+  /** Machine-readable cause. Null if and only if `state` is 'ok'. */
+  reason: z.string().nullable(),
+  /** Files whose reverse-import walk was cut short by the fan-out cap. */
+  truncated_files: z.array(z.string()).default([]),
+  prior_prs: z.array(PriorPr).default([]),
+  notes_state: z.enum(['absent', 'ready']).default('absent'),
+});
+export type BlastRadiusResponse = z.infer<typeof BlastRadiusResponse>;
+
+/** Response of `POST /pulls/:id/blast/history-notes`. */
+export const BlastHistoryNotes = z.object({
+  notes: z.array(z.object({ pr_number: z.number().int(), note: z.string() })),
+});
+export type BlastHistoryNotes = z.infer<typeof BlastHistoryNotes>;

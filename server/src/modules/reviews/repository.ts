@@ -1,7 +1,7 @@
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { Finding, RunSummary, RunTrace } from '@devdigest/shared';
-import type { IntentUpsert, StoredIntent } from './ports.js';
+import type { IntentUpsert, PriorPrRow, StoredIntent } from './ports.js';
 
 /**
  * A2 — review data-access. The ONLY layer touching the DB for the review
@@ -39,6 +39,15 @@ export class ReviewRepository {
 
   getPrFiles(prId: string): Promise<(typeof t.prFiles.$inferSelect)[]> {
     return pullRepo.getPrFiles(this.db, prId);
+  }
+
+  getPriorPrs(
+    repoId: string,
+    prId: string,
+    paths: string[],
+    limit: number,
+  ): Promise<PriorPrRow[]> {
+    return pullRepo.getPriorPrs(this.db, repoId, prId, paths, limit);
   }
 
   // ---- reviews + findings -------------------------------------------------

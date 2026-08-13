@@ -47,6 +47,14 @@ export const INDEX_SOFT_BUDGET_MS = 110_000;
 
 // --- [T3] Graph / hotness / repo-map ---------------------------------------
 export const BFS_DEPTH = 2;
+/**
+ * [T3] Distinct files the reverse-import walk may reach before it stops
+ * expanding. A barrel file has hundreds of reverse edges and two hops square
+ * that, so an uncapped walk over one `index.ts` would pull most of the repo.
+ * Hitting this cap is reported (`truncatedFrom`) rather than silently absorbed:
+ * a walk that stopped early is a `partial` answer, not a complete one.
+ */
+export const MAX_REVERSE_FANOUT = 200;
 export const HOTNESS_WINDOW_DAYS = 180;
 export const DEFAULT_REPO_MAP_TOKEN_BUDGET = 1500;
 /** Signatures are trimmed to this many chars in the parse phase (cache stability). */
