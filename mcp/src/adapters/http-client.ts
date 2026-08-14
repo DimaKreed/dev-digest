@@ -20,6 +20,7 @@ import {
   ApiError,
   BlastRadiusBrief,
   ConventionListResponse,
+  DiffReviewBrief,
   PrBrief,
   RepoBrief,
   ReviewBrief,
@@ -35,6 +36,13 @@ import type { ApiResult, DevDigestApi } from '../ports.js';
  */
 const REQUEST_TIMEOUT_MS = 20_000;
 
+/**
+ * A diff review runs the model synchronously inside the request, so it cannot be
+ * held to the read-request ceiling. Matched to the review cap the server itself
+ * works to, plus a margin for the response to come back.
+ */
+const REVIEW_TIMEOUT_MS = 180_000;
+
 export interface HttpApiOptions {
   baseUrl: string;
   /** Injectable for tests that want to drive the wire without a server. */
@@ -49,12 +57,13 @@ export function createHttpApi(options: HttpApiOptions): DevDigestApi {
     schema: z.ZodType<T>,
     path: string,
     init?: RequestInit,
+    timeoutMs: number = REQUEST_TIMEOUT_MS,
   ): Promise<ApiResult<T>> {
     let response: Response;
     try {
       response = await doFetch(`${baseUrl}${path}`, {
         ...init,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       // These are NOT one situation, and conflating them sends the caller to
@@ -62,7 +71,7 @@ export function createHttpApi(options: HttpApiOptions): DevDigestApi {
       // DOMException named TimeoutError; a refused connection does not.
       const timedOut = error instanceof Error && error.name === 'TimeoutError';
       return timedOut
-        ? { ok: false, failure: { kind: 'slow', baseUrl, timeoutMs: REQUEST_TIMEOUT_MS } }
+        ? { ok: false, failure: { kind: 'slow', baseUrl, timeoutMs } }
         : { ok: false, failure: { kind: 'unreachable', baseUrl } };
     }
 
@@ -107,6 +116,19 @@ export function createHttpApi(options: HttpApiOptions): DevDigestApi {
     listConventions: (repoId) =>
       request(ConventionListResponse, `/repos/${id(repoId)}/conventions`),
     getBlastRadius: (prId) => request(BlastRadiusBrief, `/pulls/${id(prId)}/blast`),
+    reviewDiff: (input) =>
+      request(
+        DiffReviewBrief,
+        '/reviews/diff',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          // The patch is a request BODY, never a path segment — it is arbitrary
+          // multi-line text from the developer's own working tree.
+          body: JSON.stringify(input),
+        },
+        REVIEW_TIMEOUT_MS,
+      ),
     startReview: (prId, agentId) =>
       request(StartReviewResponse, `/pulls/${id(prId)}/review`, {
         method: 'POST',

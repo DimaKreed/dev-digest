@@ -11,6 +11,7 @@ import type {
   AgentBrief,
   BlastRadiusBrief,
   ConventionListResponse,
+  DiffReviewBrief,
   PrBrief,
   RepoBrief,
   ReviewBrief,
@@ -60,6 +61,16 @@ export interface DevDigestApi {
   listReviews(prId: string): Promise<ApiResult<ReviewBrief[]>>;
   listConventions(repoId: string): Promise<ApiResult<ConventionListResponse>>;
   getBlastRadius(prId: string): Promise<ApiResult<BlastRadiusBrief>>;
+  /**
+   * Review a patch that belongs to no pull request. Used by the CLI, not by any
+   * MCP tool: it is the one call in this port that costs money without a model
+   * having asked for it.
+   */
+  reviewDiff(input: {
+    patch: string;
+    agentId?: string | undefined;
+    task?: string | undefined;
+  }): Promise<ApiResult<DiffReviewBrief>>;
 }
 
 /**

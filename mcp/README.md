@@ -1,8 +1,9 @@
 # @devdigest/mcp
 
 A local [MCP](https://modelcontextprotocol.io) server that exposes DevDigest's code review to
-any MCP client, over **stdio**. It is a thin client of the DevDigest HTTP API on
-`http://localhost:3001` — no database, no Drizzle, no shared source with `server/`.
+any MCP client, over **stdio**, plus the `devdigest review` pre-push CLI. Both are thin
+clients of the DevDigest HTTP API on `http://localhost:3001` — no database, no Drizzle, no
+shared source with `server/`.
 
 ## Run it
 
@@ -19,6 +20,50 @@ npm run -s start                 # speaks JSON-RPC on stdin/stdout
 ```
 
 `DEVDIGEST_API_URL` overrides the API location; it defaults to `http://localhost:3001`.
+
+## `devdigest review` — review before you push
+
+Blast radius and the reviewer both work on a pull request, which means the first feedback on
+a change arrives after it is already pushed. This command moves the same review earlier, onto
+the working copy.
+
+```sh
+cd mcp && npm run -s review          # or: node bin/devdigest.mjs review
+```
+
+It reads `git diff HEAD` — staged and unstaged changes to tracked files — and POSTs the patch
+to `POST /reviews/diff`, which runs **the same engine, the same prompt assembly, the same
+grounding gate and the same scoring** a pull-request review runs. Nothing about the review
+lives in this package; a second implementation here would drift from the first one the day
+either changed.
+
+### Untracked files are not reviewed
+
+`git diff HEAD` cannot see a file git has never been told about, so a brand-new file is
+invisible to this command. Any that exist are listed under `NOT reviewed` in the output, so
+their absence is stated rather than assumed — the case where silence would most easily be
+read as approval. `git add` them to include them.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Reviewed. Nothing meets the agent's gate — safe to push. |
+| 1 | Reviewed. Blocking findings were reported. |
+| 2 | **Could not** review: git failed, nothing to review, or the API was unreachable. |
+
+2 is never a verdict about the code, which is why it is kept apart from 1 — a hook must not
+be able to read "could not review" as "clean". For the same reason an empty working tree
+exits 2, not 0: nothing was examined.
+
+Which findings block is the reviewing agent's own `ci_fail_on` (`never` / `critical` /
+`warning` / `any`), applied server-side. The CLI reads the resulting `blockers` count and
+never re-derives the gate from severities, so it cannot disagree with the web app or CI.
+
+`--mode working` is the default and the only implemented mode; `staged` and `branch` are
+named so an unknown mode fails with real options rather than silently reviewing something
+else. `--agent <id>` picks a reviewer, `--json` emits the whole review for scripting, and
+`--help` documents all of it.
 
 ## The five tools
 

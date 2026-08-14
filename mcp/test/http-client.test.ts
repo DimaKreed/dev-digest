@@ -84,6 +84,100 @@ describe('createHttpApi — response handling', () => {
     expect(result.failure.kind).toBe('bad_response');
   });
 
+  it('gives reviewDiff its own, far larger budget', async () => {
+    // A diff review runs the model inside the request; holding it to the read
+    // ceiling would time out every real review. The reported budget must be the
+    // one that was actually applied, or the advice names the wrong number.
+    const result = await apiThatFailsWith(timeoutError()).reviewDiff({ patch: 'x' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure).toEqual({ kind: 'slow', baseUrl: BASE, timeoutMs: 180_000 });
+  });
+
+  it('reports a refused connection on reviewDiff as unreachable, not as a clean review', async () => {
+    const refused = new Error('fetch failed');
+    refused.name = 'TypeError';
+
+    const result = await apiThatFailsWith(refused).reviewDiff({ patch: 'x' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure).toEqual({ kind: 'unreachable', baseUrl: BASE });
+  });
+
+  it('sends the patch in the body and never in the URL', async () => {
+    // The patch is arbitrary multi-line text from a working tree; a path segment
+    // is the one place it must never appear.
+    let seenUrl = '';
+    let seenBody = '';
+    const api = createHttpApi({
+      baseUrl: BASE,
+      fetchImpl: async (url, init) => {
+        seenUrl = String(url);
+        seenBody = String(init?.body ?? '');
+        return new Response(
+          JSON.stringify({
+            agent_name: 'A',
+            verdict: 'approve',
+            findings: [],
+            blockers: 0,
+            fail_on: 'critical',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      },
+    });
+
+    const patch = 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-a\n+b\n';
+    const result = await api.reviewDiff({ patch });
+
+    expect(result.ok).toBe(true);
+    expect(seenUrl).toBe(`${BASE}/reviews/diff`);
+    expect(seenUrl).not.toContain('diff --git');
+    expect(JSON.parse(seenBody).patch).toBe(patch);
+  });
+
+  it('reports a 429 from the review cap as rate_limited', async () => {
+    const api = createHttpApi({
+      baseUrl: BASE,
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ error: { code: 'rate_limited', message: 'slow down' } }), {
+          status: 429,
+          headers: { 'content-type': 'application/json' },
+        }),
+    });
+
+    const result = await api.reviewDiff({ patch: 'x' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.kind).toBe('rate_limited');
+  });
+
+  it.each([
+    ['blockers', { agent_name: 'A', verdict: 'approve', fail_on: 'critical' }],
+    ['fail_on', { agent_name: 'A', verdict: 'approve', blockers: 0 }],
+  ])('refuses a review body missing %s — the exit code depends on it', async (_field, body) => {
+    // `blockers` is what the exit code is derived from, and `fail_on` is the
+    // gate that produced it. Either one missing must fail loudly rather than
+    // default to a value that reads as "safe to push".
+    const api = createHttpApi({
+      baseUrl: BASE,
+      fetchImpl: async () =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    });
+
+    const result = await api.reviewDiff({ patch: 'x' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.kind).toBe('bad_response');
+  });
+
   it('tolerates a field the server added that this package does not know', async () => {
     const api = createHttpApi({
       baseUrl: BASE,

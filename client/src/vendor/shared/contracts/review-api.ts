@@ -134,6 +134,43 @@ export const BlastRadiusResponse = BlastRadius.extend({
 });
 export type BlastRadiusResponse = z.infer<typeof BlastRadiusResponse>;
 
+/**
+ * Request of `POST /reviews/diff` — review a patch that belongs to no pull
+ * request, so a change can be reviewed before it is pushed.
+ *
+ * `patch` is a unified diff exactly as `git diff` writes one. The route parses
+ * it server-side and runs the same engine a PR review runs; nothing is
+ * persisted, because there is no pull request to hang it on.
+ */
+export const DiffReviewRequest = z.object({
+  patch: z.string().min(1),
+  /** Omit to use the workspace's first enabled agent. */
+  agentId: z.string().uuid().optional(),
+  /** Free text shown to the reviewer as the task, e.g. the branch name. */
+  task: z.string().max(500).optional(),
+});
+export type DiffReviewRequest = z.infer<typeof DiffReviewRequest>;
+
+/** Response of `POST /reviews/diff`. */
+export const DiffReviewResponse = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  model: z.string(),
+  verdict: Verdict,
+  score: z.number().int(),
+  summary: z.string(),
+  /** Grounded, in-scope findings — the set score and verdict derive from. */
+  findings: z.array(Finding),
+  /** Findings at or above the agent's `ci_fail_on` gate. */
+  blockers: z.number().int(),
+  /** The gate this review was judged under. */
+  fail_on: z.string(),
+  files_reviewed: z.number().int(),
+  grounding: z.string(),
+  cost_usd: z.number().nullable(),
+});
+export type DiffReviewResponse = z.infer<typeof DiffReviewResponse>;
+
 /** Response of `POST /pulls/:id/blast/history-notes`. */
 export const BlastHistoryNotes = z.object({
   notes: z.array(z.object({ pr_number: z.number().int(), note: z.string() })),

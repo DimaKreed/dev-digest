@@ -233,6 +233,32 @@ export const BlastRadiusBrief = z.object({
 });
 export type BlastRadiusBrief = z.infer<typeof BlastRadiusBrief>;
 
+/**
+ * Mirrors `contracts/review-api.ts` → `DiffReviewResponse`.
+ *
+ * `blockers` and `fail_on` are the load-bearing pair: the CLI's exit code is
+ * derived from `blockers`, and `fail_on` is the gate that produced it. Reporting
+ * one without the other would leave a caller unable to tell "clean" from
+ * "nothing meets a lenient gate".
+ */
+export const DiffReviewBrief = z.object({
+  agent_name: z.string(),
+  model: z.string().nullish(),
+  verdict: Verdict,
+  score: z.number().int().nullish(),
+  summary: z.string().nullish(),
+  findings: z.array(FindingBrief).nullish(),
+  // Required, both of them. The exit code is derived from `blockers`, and
+  // `fail_on` is the gate that produced it — "0 blocking" under `never` and
+  // under `critical` are different facts. A response missing either must fail
+  // loudly rather than default to a number that reads as "safe to push".
+  blockers: z.number().int(),
+  fail_on: z.string(),
+  files_reviewed: z.number().int().nullish(),
+  cost_usd: z.number().nullish(),
+});
+export type DiffReviewBrief = z.infer<typeof DiffReviewBrief>;
+
 /** Mirrors `contracts/platform.ts` → `ApiErrorBody`. Every route uses it. */
 export const ApiError = z.object({
   error: z.object({

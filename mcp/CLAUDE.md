@@ -16,9 +16,10 @@ npm run -s start    # stdio server; -s matters, see below
 ## Map
 
 `src/server.ts` — stdio entry point + the `instructions` string (ring 5)
+`src/cli.ts` — the `devdigest review` entry point (ring 5); `bin/devdigest.mjs` runs it
 `src/container.ts` — the only file that reads configuration (ring 5)
 `src/transport/tools.ts` — the five tool registrations; this package's `routes.ts` (ring 4)
-`src/adapters/` — `http-client.ts` (the only I/O), `clock.ts`, `mocks.ts` (ring 3)
+`src/adapters/` — `http-client.ts` + `git.ts` (the only I/O), `clock.ts`, `mocks.ts` (ring 3)
 `src/usecases/` — one file per tool + `resolve-target.ts` (ring 2)
 `src/ports.ts`, `src/contracts.ts` — the `DevDigestApi`/`Clock` ports and narrow schemas (ring 1)
 `src/domain/` — `format.ts`, `limits.ts`, `errors.ts`; pure (ring 0)
@@ -32,7 +33,19 @@ npm run -s start    # stdio server; -s matters, see below
 - **Nothing may be written to stdout except JSON-RPC.** Stdout is the protocol channel; a
   stray `console.log` corrupts framing and the client fails to parse the first message.
   Diagnostics go to `console.error`. This is also why `.mcp.json` runs npm with `--silent`:
-  without it, `npm run`'s own banner lands on stdout.
+  without it, `npm run`'s own banner lands on stdout. **This applies to `src/server.ts` and
+  everything it imports — not to `src/cli.ts`**, a separate process where stdout is the
+  report and `--json | jq` must work. The two entry points share the ports, the schemas and
+  the domain layer; they share no process, and neither imports the other.
+- **The CLI does not review anything itself.** `devdigest review` reads git and POSTs the
+  patch to `/reviews/diff`, which runs the same engine a PR review runs. A second review
+  implementation here would drift from that one the day either changed. Its exit codes are a
+  contract: 0 clean, 1 blocking findings, 2 could-not-review — and 2 is never a verdict about
+  the code. Which findings block is the agent's server-side `ci_fail_on`, read from the
+  response's `blockers`, never re-derived from severities.
+- **Set `process.exitCode`; never call `process.exit()` in the CLI path.** Exiting outright
+  tears down stdout while the report is still draining — on Windows that aborts the process
+  in libuv, losing both the output and the code.
 - **The tool descriptions and every error string are contract, not prose.** They live in
   `src/transport/tools.ts` and `src/domain/errors.ts`, are sized against the 2 KB truncation a
   client applies to each description and to `instructions`, and lead with the load-bearing

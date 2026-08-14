@@ -15,12 +15,14 @@ import {
   AgentBrief,
   BlastRadiusBrief,
   ConventionListResponse,
+  DiffReviewBrief,
   PrBrief,
   RepoBrief,
   ReviewBrief,
   RunBrief,
 } from '../contracts.js';
 import type { ApiFailure, ApiResult, Clock, DevDigestApi } from '../ports.js';
+import type { GitClient, GitFailure, GitResult, LocalChanges } from '../ports-git.js';
 
 export interface FakeClock extends Clock {
   /** Simulated milliseconds slept so far. */
@@ -52,6 +54,8 @@ export interface FakeApiOptions {
   conventions?: unknown;
   /** The blast-radius payload `getBlastRadius` returns. */
   blast?: unknown;
+  /** The payload `reviewDiff` returns. */
+  diffReview?: unknown;
   /**
    * Run rows to return per `listRuns` call, 1-based. The last entry repeats
    * forever, which is how "never leaves running" is expressed.
@@ -64,7 +68,9 @@ export interface FakeApiOptions {
 }
 
 export interface FakeApi extends DevDigestApi {
-  calls: { listRuns: number; startReview: number; listReviews: number };
+  calls: { listRuns: number; startReview: number; listReviews: number; reviewDiff: number };
+  /** The patch the last `reviewDiff` call was given, for asserting what was sent. */
+  lastPatch(): string | null;
 }
 
 export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
@@ -84,8 +90,20 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
   const blast = BlastRadiusBrief.parse(
     options.blast ?? { changed_symbols: [], downstream: [], summary: null, state: 'ok' },
   );
+  const diffReview = DiffReviewBrief.parse(
+    options.diffReview ?? {
+      agent_name: 'General Reviewer',
+      verdict: 'approve',
+      score: 100,
+      findings: [],
+      blockers: 0,
+      fail_on: 'critical',
+      files_reviewed: 1,
+    },
+  );
 
-  const calls = { listRuns: 0, startReview: 0, listReviews: 0 };
+  const calls = { listRuns: 0, startReview: 0, listReviews: 0, reviewDiff: 0 };
+  let lastPatch: string | null = null;
 
   function answer<T>(method: keyof DevDigestApi, value: T): ApiResult<T> {
     const failure = options.failures?.[method];
@@ -94,11 +112,17 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
 
   return {
     calls,
+    lastPatch: () => lastPatch,
     listAgents: async () => answer('listAgents', agents),
     listRepos: async () => answer('listRepos', repos),
     listPulls: async (repoId) => answer('listPulls', pulls[repoId] ?? []),
     listConventions: async () => answer('listConventions', conventions),
     getBlastRadius: async () => answer('getBlastRadius', blast),
+    reviewDiff: async (input) => {
+      calls.reviewDiff += 1;
+      lastPatch = input.patch;
+      return answer('reviewDiff', diffReview);
+    },
     listReviews: async () => {
       calls.listReviews += 1;
       return answer('listReviews', reviews);
@@ -114,6 +138,33 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
         pr_id: prId,
         runs: options.startedRuns ?? [],
       });
+    },
+  };
+}
+
+/**
+ * A git working tree, substituted at the port seam.
+ *
+ * `failure` wins over `changes`, which is how "git is not installed" and "the
+ * tree is clean" are expressed without shelling out to a real repository.
+ */
+export function createFakeGit(options: {
+  changes?: Partial<LocalChanges>;
+  failure?: GitFailure;
+} = {}): GitClient {
+  return {
+    async workingTree(): Promise<GitResult<LocalChanges>> {
+      if (options.failure) return { ok: false, failure: options.failure };
+      return {
+        ok: true,
+        value: {
+          root: '/repo',
+          patch: 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-a\n+b\n',
+          branch: 'feat/x',
+          untracked: [],
+          ...options.changes,
+        },
+      };
     },
   };
 }
