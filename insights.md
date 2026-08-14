@@ -20,6 +20,20 @@ names and formatting the lesson expects. Two traps: the removals span BOTH `vend
 and one of them dropped a DB column, so restoring needs a NEW migration, not a revert.
 _2026-07-30_
 
+### Running a review tool on its own uncommitted diff finds what the test suite structurally cannot
+**Symptom:** `devdigest review` was green on 83 hermetic tests and a manual `--help`. Run
+against its own working tree it immediately reported a CRITICAL: `mcp/package.json` declared
+`"bin": "./bin/devdigest.mjs"` while that file was untracked, so it was absent from
+`git diff HEAD` and would break on install. A second run found `blockers`/`fail_on` reachable
+as `undefined` in the response schema the exit code reads. Neither is findable by a test —
+the first is a fact about the *repository state*, not the code.
+**Rule:** for any tool that consumes a repo (a reviewer, a linter, an indexer), the last
+verification step is pointing it at this repo's own pending diff, before the commit. Two
+non-obvious details: it needs the API running (`./scripts/dev.sh`), and `git add` the new
+files first or the tool reviews everything *except* what you just wrote — which is exactly
+the blind spot that produced the CRITICAL above.
+_2026-08-14_
+
 ## What Doesn't Work
 
 ### A plan's done-when can name symbols that do not exist in the package it assigns the test to
@@ -51,6 +65,18 @@ against a plausible one. `mcp/package.json`
 _2026-08-13_
 
 ## Codebase Patterns
+
+### `pull_requests` has no merge timestamp and no author avatar, so a "prior PRs" contract cannot be filled from it as written
+**Symptom:** `PrHistoryItem` (`contracts/brief.ts:65-72`) declares `merged_at`, which reads as
+a column and is not one. `src/db/schema/pulls.ts:5-34` has `status` (default `'needs_review'`)
+and `updated_at`, and nothing else about merging; there is no avatar column either, so a
+`author_avatar` field added to a response is permanently null.
+**Rule:** derive "merged" from `status = 'merged'` and carry `updated_at` as `merged_at`, with
+a comment saying so at the contract — the name outlives the explanation otherwise. Before
+adding a display field to a PR-shaped contract, grep the schema for the column: a field that
+can never be non-null is worse than an absent one, because the client branches on it forever.
+`server/src/modules/reviews/repository/pull.repo.ts` (`getPriorPrs`)
+_2026-08-14_
 
 ### A Zod field parsed back out of a jsonb column must be `.nullish()`, never `.nullable()`
 **Symptom:** re-adding `cost_usd` to `RunStats` as `.nullable()` typechecks and passes fresh tests,
