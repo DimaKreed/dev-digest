@@ -82,6 +82,14 @@ export interface ReverseImpactRead {
 
 export interface IndexStateRead {
   status: 'full' | 'partial' | 'degraded' | 'failed';
+  /** Files the last run indexed. Zero means there was nothing to build from. */
+  filesIndexed: number;
+  /**
+   * Import edges the last run wrote. Zero over a non-empty file set means the
+   * graph is missing however healthy `status` claims to be — and without it no
+   * reference resolves, so no caller can ever be found.
+   */
+  edgesWritten?: number;
   reason?: string;
   degradedReason?: string;
 }

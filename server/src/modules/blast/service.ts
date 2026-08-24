@@ -47,6 +47,8 @@ export class BlastService {
       blast,
       impact,
       indexStatus: indexState.status,
+      indexEdges: indexState.edgesWritten,
+      indexFiles: indexState.filesIndexed,
       priorPrs,
     });
   }

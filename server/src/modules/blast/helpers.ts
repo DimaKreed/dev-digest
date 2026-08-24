@@ -87,11 +87,22 @@ export function deriveState(
   indexStatus: IndexStateRead['status'] | null,
   blast: BlastRadiusRead,
   truncated: boolean,
+  graph?: { edges: number | undefined; files: number },
 ): { state: BlastState; reason: string | null } {
   if (blast.degraded) return { state: 'degraded', reason: blast.reason ?? 'no_data' };
   if (indexStatus === null) return { state: 'degraded', reason: 'no_data' };
   if (indexStatus === 'degraded' || indexStatus === 'failed') {
     return { state: 'degraded', reason: 'index_failed' };
+  }
+  // An empty import graph outranks whatever `status` claims. `status` is the
+  // indexer's own verdict, and it is computed as "nothing threw" — but
+  // `buildEdges` swallows its failures and returns `[]`, so a run can be stamped
+  // `full` with no graph at all. Without the graph no reference resolves, so a
+  // caller can never be found: reporting `ok` here would present a structural
+  // blindness as a measured "nothing calls this code", which is the one
+  // conclusion this whole feature exists to prevent.
+  if (graph && graph.files > 0 && graph.edges === 0) {
+    return { state: 'degraded', reason: 'no_import_graph' };
   }
   if (indexStatus === 'partial') return { state: 'partial', reason: 'index_partial' };
   if (truncated) return { state: 'partial', reason: 'fanout_capped' };
@@ -146,6 +157,10 @@ export function toBlastResponse(input: {
   blast: BlastRadiusRead;
   impact: ReverseImpactRead;
   indexStatus: IndexStateRead['status'] | null;
+  /** Edges the last index wrote — zero means no caller can ever resolve. */
+  indexEdges?: number | undefined;
+  /** Files the last index walked, so an empty repo is not read as a broken one. */
+  indexFiles?: number | undefined;
   priorPrs: BlastPriorPr[];
 }): BlastRadiusResponse {
   const { blast, impact, indexStatus, priorPrs } = input;
@@ -223,7 +238,14 @@ export function toBlastResponse(input: {
     };
   });
 
-  const { state, reason } = deriveState(indexStatus, blast, impact.truncatedFrom.length > 0);
+  const { state, reason } = deriveState(
+    indexStatus,
+    blast,
+    impact.truncatedFrom.length > 0,
+    input.indexFiles === undefined
+      ? undefined
+      : { edges: input.indexEdges, files: input.indexFiles },
+  );
 
   return {
     changed_symbols: changedSymbols,

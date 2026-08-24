@@ -212,6 +212,12 @@ export class RepoIntelRepository {
       const stats = (row.stats ?? {}) as Record<string, unknown>;
       const durationMs = typeof stats.durationMs === 'number' ? stats.durationMs : 0;
       const reason = typeof stats.reason === 'string' ? stats.reason : undefined;
+      // Observable, unlike `status`, which is the indexer's own claim. A run can
+      // finish "full" with an empty import graph — buildEdges swallows its
+      // failures — and without the graph no reference can resolve, so every
+      // caller-shaped read is structurally blind rather than merely incomplete.
+      const edgesWritten =
+        typeof stats.edgesWritten === 'number' ? stats.edgesWritten : undefined;
       // A persisted row is the "real" index state. We only mark it `degraded`
       // when the indexer itself stamped status='degraded'|'failed' (e.g. the
       // graph fell over). 'partial' is still a working index — no degraded flag.
@@ -223,6 +229,7 @@ export class RepoIntelRepository {
         filesSkipped: row.filesSkipped,
         durationMs,
         reason,
+        edgesWritten,
         lastIndexedSha: row.lastIndexedSha,
         indexerVersion: row.indexerVersion,
         updatedAt: row.updatedAt,

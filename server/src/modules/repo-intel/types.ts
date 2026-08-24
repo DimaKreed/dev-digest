@@ -44,6 +44,13 @@ export interface IndexState extends IndexResult {
   lastIndexedSha: string;
   indexerVersion: number;
   updatedAt: Date;
+  /**
+   * Import edges the last index actually wrote, from `stats.edgesWritten`.
+   * `undefined` when the run predates the field. ZERO over a non-empty file
+   * set means the graph is missing, whatever `status` says — and nothing that
+   * needs resolved references can work without it.
+   */
+  edgesWritten?: number;
   /** True when the layer is running on the ripgrep fallback. */
   degraded?: boolean;
   degradedReason?: DegradedReason;

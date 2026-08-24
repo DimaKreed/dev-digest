@@ -256,6 +256,38 @@ describe('deriveState', () => {
     });
   });
 
+  it('is degraded when the index wrote NO import graph, whatever status says', () => {
+    // The bug this guards: buildEdges swallows its own failures and returns [],
+    // so the pipeline stamps status 'full' with an empty graph. No graph means
+    // no reference resolves, so no caller can ever be found — reporting 'ok'
+    // would present that blindness as a measured "nothing calls this code".
+    expect(deriveState('full', clean, false, { edges: 0, files: 312 })).toEqual({
+      state: 'degraded',
+      reason: 'no_import_graph',
+    });
+  });
+
+  it('stays ok when the graph exists', () => {
+    expect(deriveState('full', clean, false, { edges: 514, files: 312 })).toEqual({
+      state: 'ok',
+      reason: null,
+    });
+  });
+
+  it('does not call an EMPTY repo broken — zero files means nothing to graph', () => {
+    expect(deriveState('full', clean, false, { edges: 0, files: 0 })).toEqual({
+      state: 'ok',
+      reason: null,
+    });
+  });
+
+  it('stays ok when the edge count is unknown (a run predating the field)', () => {
+    expect(deriveState('full', clean, false, { edges: undefined, files: 312 })).toEqual({
+      state: 'ok',
+      reason: null,
+    });
+  });
+
   it('is degraded when there is no index row at all', () => {
     expect(deriveState(null, clean, false)).toEqual({ state: 'degraded', reason: 'no_data' });
   });
