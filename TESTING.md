@@ -47,15 +47,31 @@ fails there if the win32 prebuilt is missing).
 **server-integration** — the `*.it.test.ts` files. Each starts a real Postgres
 (pgvector) via testcontainers, builds the Fastify app, migrates + seeds, and
 drives routes end-to-end: reviews + run lifecycle (incl. grounding), agents CRUD,
-repo-intel symbol clamping, pulls comments, settings models. They self-skip when
-Docker is unavailable.
+repo-intel symbol clamping, pulls comments, settings models, blast radius, diff
+review. They self-skip when Docker is unavailable.
+
+Two of those files carry invariants only a real DB can prove, and both are worth
+keeping green rather than rewriting:
+
+- `blast.it.test.ts` installs a `CodeIndex` whose every method rejects, so a 200
+  proves the answer came from the persisted index and not the ripgrep fallback;
+  counts `symbols`/`references`/`file_edges` and `repo_index_state.updated_at`
+  across the request to prove nothing was re-indexed; and installs a counting
+  `MockLLMProvider` to prove the map path reaches no model. That last one matters
+  because the module *does* have an LLM path (history notes) one import away.
+- `diff-review.it.test.ts` proves `POST /reviews/diff` resolves a real seeded
+  agent and persists nothing — the route has no pull request to attach a review
+  to, so a row written there would be unreachable.
 
 **reviewer-core** — the pure engine: `toReview` selection, prompt construction,
 and a `run` with a stubbed model → grounded findings. No DB / GitHub / FS.
 
-**mcp** — the five MCP tools' use cases, with the DevDigest HTTP API replaced by
-a hand-written fake behind the `DevDigestApi` port and time replaced by a fake
-clock. No server, no Postgres, no keys. The lane exists mainly for the blocking
+**mcp** — the five MCP tools' use cases plus the `devdigest review` CLI, with the
+DevDigest HTTP API replaced by a hand-written fake behind the `DevDigestApi` port,
+git replaced by a fake behind `GitClient`, and time replaced by a fake clock. No
+server, no Postgres, no git repository, no keys. The CLI's exit-code contract is
+pinned here: 0 clean, 1 blocking, 2 could-not-review — including that an empty
+working tree exits 2 rather than 0, since nothing was examined. The lane exists mainly for the blocking
 wait loop: a run that never finishes must give up at exactly the 120 s cap and
 hand back the `run_id`, and that assertion runs in milliseconds because the
 clock is injected rather than read. Fixtures are parsed through the package's
