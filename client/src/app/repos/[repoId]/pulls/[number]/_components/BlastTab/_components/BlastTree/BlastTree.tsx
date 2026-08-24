@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 import { Badge, Icon, MonoLink } from "@devdigest/ui";
 import type { DownstreamNode } from "@devdigest/shared";
 import { githubBlobUrl } from "@/lib/github-urls";
-import { s } from "./styles";
+import { s } from "../../styles";
 
 export interface BlastLinkContext {
   /** Paths in THIS PR's diff. A caller outside it cannot be deep-linked there. */
@@ -55,6 +55,7 @@ function CallerLink({
             target="_blank"
             rel="noopener noreferrer"
             title={t("openInGithub")}
+            aria-label={t("openInGithub")}
             onClick={(e) => e.stopPropagation()}
           >
             <Icon.ExternalLink size={12} />
@@ -144,8 +145,13 @@ export function BlastTree({
 }) {
   return (
     <div>
-      {downstream.map((node) => (
-        <SymbolRow key={node.symbol} node={node} ctx={ctx} />
+      {/* The index disambiguates: DownstreamNode carries only a name, and two
+          changed FILES can each declare the same symbol — the server dedupes
+          changed symbols by name+file, not by name. Without the tiebreak those
+          rows share a React identity and SymbolRow holds its own collapse state,
+          so expanding one would toggle the other. */}
+      {downstream.map((node, i) => (
+        <SymbolRow key={`${node.symbol}#${i}`} node={node} ctx={ctx} />
       ))}
     </div>
   );

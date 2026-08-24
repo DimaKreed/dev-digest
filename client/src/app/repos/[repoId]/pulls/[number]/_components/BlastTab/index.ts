@@ -1,1 +1,1 @@
-export { BlastTab } from "./BlastTab";
+export { BlastTab, type BlastView, BLAST_VIEWS } from "./BlastTab";

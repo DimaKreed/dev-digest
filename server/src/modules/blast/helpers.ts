@@ -161,6 +161,16 @@ export function toBlastResponse(input: {
   // Group by the symbol reached. `blast.callers` arrives sorted by file rank
   // descending, and a Map preserves insertion order, so each group keeps that
   // order without a second sort.
+  //
+  // KNOWN LIMIT — grouping is by NAME, so if two changed files each declare a
+  // symbol of the same name, their callers merge into one list and both
+  // downstream entries show it. The facade cannot tell them apart: a
+  // `BlastCallerRow` carries the name it reached (`viaSymbol`) but not the file
+  // that declared it, because `getResolvedCallers` filters `decl_file` against
+  // the whole changed set and does not return it. Splitting them means carrying
+  // `declFile` through the facade row, which is a repo-intel change rather than
+  // a mapping one. Until then this over-reports rather than under-reports, which
+  // is the safer direction for a blast radius.
   const byVia = new Map<string, BlastCallerRead[]>();
   for (const c of blast.callers) {
     // A reference from inside the declaring file is not a downstream caller.

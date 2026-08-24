@@ -10,12 +10,15 @@
  * the first would trip `c5-pure-helpers` and the second `no-cross-module`.
  */
 
+/** Providers the container can build. Restated to keep `platform/` out of ring 1. */
+export type DiffReviewProvider = 'openai' | 'anthropic' | 'openrouter';
+
 /** An agent, reduced to what running the engine needs. */
 export interface DiffReviewAgent {
   id: string;
   name: string;
   systemPrompt: string;
-  provider: string;
+  provider: DiffReviewProvider;
   model: string;
   strategy: 'single-pass' | 'map-reduce' | 'auto' | null;
   ciFailOn: 'never' | 'critical' | 'warning' | 'any';
@@ -28,5 +31,3 @@ export interface DiffReviewAgentReads {
   linkedSkills(agentId: string): Promise<{ skill: { body: string; enabled: boolean } }[]>;
 }
 
-/** Providers the container can build. Restated to keep `platform/` out of ring 1. */
-export type DiffReviewProvider = 'openai' | 'anthropic' | 'openrouter';

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Finding, Verdict } from './findings.js';
+import { CiFailOn } from './knowledge.js';
 import {
   BlastCaller,
   BlastRadius,
@@ -163,8 +164,8 @@ export const DiffReviewResponse = z.object({
   findings: z.array(Finding),
   /** Findings at or above the agent's `ci_fail_on` gate. */
   blockers: z.number().int(),
-  /** The gate this review was judged under. */
-  fail_on: z.string(),
+  /** The gate this review was judged under — the agent's own `ci_fail_on`. */
+  fail_on: CiFailOn,
   files_reviewed: z.number().int(),
   grounding: z.string(),
   cost_usd: z.number().nullable(),

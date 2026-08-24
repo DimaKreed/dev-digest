@@ -11,10 +11,14 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
 import { useBlastRadius } from "@/lib/hooks/blast";
-import { BlastGraph } from "./BlastGraph";
-import { BlastTree, type BlastLinkContext } from "./BlastTree";
-import { PriorPrs } from "./PriorPrs";
+import { BlastGraph } from "./_components/BlastGraph";
+import { BlastTree, type BlastLinkContext } from "./_components/BlastTree";
+import { PriorPrs } from "./_components/PriorPrs";
 import { s } from "./styles";
+
+/** The two renderings of the same data. A closed set, so it is a union. */
+export type BlastView = "tree" | "graph";
+export const BLAST_VIEWS: readonly BlastView[] = ["tree", "graph"];
 
 interface BlastTabProps {
   prId: string | null;
@@ -23,8 +27,8 @@ interface BlastTabProps {
   repoFullName: string | null;
   headSha: string | null;
   onOpenFile: (file: string, startLine: number, endLine: number) => void;
-  view: string;
-  onSetView: (view: string) => void;
+  view: BlastView;
+  onSetView: (view: BlastView) => void;
 }
 
 function Stat({ value, label }: { value: number; label: string }) {
@@ -87,22 +91,13 @@ export function BlastTab({
         <Stat value={crons.size} label={t("stat.crons")} />
 
         <div style={s.viewToggle}>
-          {(["tree", "graph"] as const).map((mode) => (
+          {BLAST_VIEWS.map((mode) => (
             <button
               key={mode}
               type="button"
               aria-pressed={view === mode}
               onClick={() => onSetView(mode)}
-              style={{
-                padding: "3px 10px",
-                borderRadius: 6,
-                border: "1px solid var(--border)",
-                cursor: "pointer",
-                font: "inherit",
-                fontSize: 12,
-                background: view === mode ? "var(--bg-hover)" : "transparent",
-                color: view === mode ? "var(--text-primary)" : "var(--text-muted)",
-              }}
+              style={s.viewToggleBtn(view === mode)}
             >
               {t(`view.${mode}`)}
             </button>

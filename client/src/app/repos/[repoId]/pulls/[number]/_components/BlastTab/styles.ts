@@ -30,6 +30,17 @@ export const s = {
     color: "var(--text-primary)",
   } satisfies CSSProperties,
   viewToggle: { marginLeft: "auto", display: "flex", gap: 4 } satisfies CSSProperties,
+  viewToggleBtn: (active: boolean) =>
+    ({
+      padding: "3px 10px",
+      borderRadius: 6,
+      border: "1px solid var(--border)",
+      cursor: "pointer",
+      font: "inherit",
+      fontSize: 12,
+      background: active ? "var(--bg-hover)" : "transparent",
+      color: active ? "var(--text-primary)" : "var(--text-muted)",
+    }) satisfies CSSProperties,
 
   // --- tree ---------------------------------------------------------------
   symbolRow: {

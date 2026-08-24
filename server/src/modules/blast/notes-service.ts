@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { wrapUntrusted } from '@devdigest/reviewer-core';
 import { FeatureModelChoice, FEATURE_MODELS, type BlastHistoryNotes } from '@devdigest/shared';
 import { NotFoundError } from '../../platform/errors.js';
 import { MAX_PRIOR_PRS } from './helpers.js';
@@ -51,17 +52,25 @@ export class BlastNotesService {
       number: String(pull.number),
     });
 
-    const user = [
-      `Pull request under review: #${pull.number} — ${pull.title}`,
-      `Files it changes:\n${paths.map((p) => `  ${p}`).join('\n')}`,
-      '',
-      'Previously merged pull requests that touched some of the same files:',
-      ...priorPrs.map(
+    // Titles, authors and file paths all come from the repository under review,
+    // so they are attacker-influenced — an outside contributor writes their own
+    // PR title. Wrapped the way `reviews/intent.ts` wraps the very same field,
+    // so the model is told where data ends and instructions do not begin.
+    const priorBlock = priorPrs
+      .map(
         (p) =>
           `  #${p.number} — ${p.title} (by ${p.author})\n` +
           `    also touched: ${p.filesOverlap.join(', ')}`,
-      ),
-    ].join('\n');
+      )
+      .join('\n');
+
+    const user = [
+      `## Pull request under review\n#${pull.number}`,
+      `## Its title\n${wrapUntrusted('pr-title', pull.title)}`,
+      `## Files it changes\n${wrapUntrusted('file-list', paths.join('\n'))}`,
+      '## Previously merged pull requests touching some of the same files',
+      wrapUntrusted('prior-prs', priorBlock),
+    ].join('\n\n');
 
     const choice = await this.resolveModel(workspaceId);
     const llm = await this.deps.llm(choice.provider);

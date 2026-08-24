@@ -77,7 +77,10 @@ export async function getPriorPrs(
       t.pullRequests.author,
       t.pullRequests.updatedAt,
     )
-    .orderBy(desc(t.pullRequests.updatedAt))
+    // NULLS LAST explicitly: `updated_at` is nullable, and Postgres DESC
+    // defaults to NULLS FIRST — five undated rows would otherwise fill the
+    // whole limit and push out the genuinely recent overlaps.
+    .orderBy(sql`${t.pullRequests.updatedAt} desc nulls last`)
     .limit(limit);
   return rows.map((r) => ({ ...r, filesOverlap: r.filesOverlap ?? [] }));
 }

@@ -16,6 +16,8 @@ import { LocalSecretsProvider } from '../adapters/secrets/local.js';
 import { LocalNoAuthProvider } from '../adapters/auth/local.js';
 import { OctokitGitHubClient } from '../adapters/github/octokit.js';
 import { SimpleGitClient } from '../adapters/git/simple-git.js';
+import { parseUnifiedDiff } from '../adapters/git/diff-parser.js';
+import type { UnifiedDiff } from '../vendor/shared/index.js';
 import { RipgrepCodeIndex } from '../adapters/codeindex/ripgrep.js';
 import { OpenAIProvider } from '../adapters/llm/openai.js';
 import { AnthropicProvider } from '../adapters/llm/anthropic.js';
@@ -157,6 +159,15 @@ export class Container {
   }
 
   /** Token counter (js-tiktoken) for the repo-map budget search. */
+  /**
+   * The unified-diff parser, exposed here so a transport layer can hand it to a
+   * service without importing an adapter itself — ring 4 may not reach ring 3.
+   * A pure function, so there is nothing to cache and nothing to override.
+   */
+  get parseDiff(): (raw: string) => UnifiedDiff {
+    return parseUnifiedDiff;
+  }
+
   get tokenizer(): Tokenizer {
     if (this.overrides.tokenizer) return this.overrides.tokenizer;
     this._tokenizer ??= new TiktokenTokenizer();

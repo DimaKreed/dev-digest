@@ -11,7 +11,8 @@
  * The exit-code contract is decided here and only here — see `ReviewExit`.
  */
 import type { DiffReviewBrief } from '../contracts.js';
-import type { DevDigestApi } from '../ports.js';
+import { apiTooSlow, rateLimited, unreachable } from '../domain/errors.js';
+import type { ApiFailure, DevDigestApi } from '../ports.js';
 import type { GitClient, GitFailure } from '../ports-git.js';
 
 /**
@@ -122,24 +123,30 @@ export async function reviewWorkingTree(
   };
 }
 
-function describeApiFailure(failure: {
-  kind: string;
-  baseUrl?: string;
-  message?: string;
-  timeoutMs?: number;
-}): string {
+/**
+ * Typed against the real `ApiFailure` union, not a structural widening: the
+ * `never` guard below turns a new failure kind into a build error here, which is
+ * the only thing that stops a cause with advice attached from silently printing
+ * a generic message. The two texts that already exist in ring 0 are reused
+ * rather than reworded — that file states the strings are the contract.
+ */
+function describeApiFailure(failure: ApiFailure): string {
   switch (failure.kind) {
     case 'unreachable':
-      return `Cannot reach the DevDigest API at ${failure.baseUrl}. Start it with ./scripts/dev.sh from the repository root.`;
+      return unreachable(failure.baseUrl);
     case 'slow':
-      return `The review did not finish within ${Math.round((failure.timeoutMs ?? 0) / 1000)} seconds. The API is running; try a smaller change, or review the pull request in the web app instead.`;
+      return apiTooSlow(failure.baseUrl, failure.timeoutMs);
     case 'not_found':
-      return failure.message ?? 'No enabled reviewer agent is configured in DevDigest.';
+      return failure.message || 'No enabled reviewer agent is configured in DevDigest.';
     case 'rate_limited':
-      return 'Rate limited by the DevDigest API — reviews are capped at 10 per minute. Wait a moment and try again.';
+      return rateLimited();
+    case 'api_error':
+      return `DevDigest returned an error: ${failure.message}.`;
     case 'bad_response':
-      return `The API answered in a shape this CLI does not recognise (${failure.message ?? 'unexpected shape'}). Check that the server and this package are the same version.`;
-    default:
-      return failure.message ?? 'The review could not be completed.';
+      return `The API answered in a shape this CLI does not recognise (${failure.message}). Check that the server and this package are the same version.`;
+    default: {
+      const exhaustive: never = failure;
+      return String(exhaustive);
+    }
   }
 }

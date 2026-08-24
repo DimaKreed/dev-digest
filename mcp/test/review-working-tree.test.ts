@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createFakeApi, createFakeGit } from '../src/adapters/mocks.js';
+import type { DiffReviewBrief, FindingBrief } from '../src/contracts.js';
 import { formatReview, sortFindings } from '../src/domain/cli-format.js';
 import { failureMessage, parseArgs } from '../src/cli.js';
 import {
@@ -26,7 +27,7 @@ function deps(over: { api?: unknown; git?: unknown } = {}) {
 
 const input = { cwd: '/repo', mode: 'working' };
 
-const BLOCKING = {
+const BLOCKING: DiffReviewBrief = {
   agent_name: 'General Reviewer',
   model: 'gpt-test',
   verdict: 'request_changes',
@@ -163,7 +164,7 @@ describe('untracked files', () => {
 describe('output', () => {
   it('names the gate alongside the blocker count', () => {
     // "0 blocking" under `never` and under `critical` are different facts.
-    const text = formatReview(BLOCKING as never, { branch: 'feat/x', untracked: [] });
+    const text = formatReview(BLOCKING, { branch: 'feat/x', untracked: [] });
     expect(text).toContain('1 blocking at gate "critical"');
     expect(text).toContain('feat/x');
     expect(text).toContain('CRITICAL');
@@ -175,7 +176,7 @@ describe('output', () => {
       { id: '1', severity: 'SUGGESTION', title: 's', file: 'b.ts', start_line: 1 },
       { id: '2', severity: 'CRITICAL', title: 'c', file: 'z.ts', start_line: 9 },
       { id: '3', severity: 'WARNING', title: 'w', file: 'a.ts', start_line: 3 },
-    ] as never;
+    ] satisfies FindingBrief[];
     expect(sortFindings(findings).map((f) => f.severity)).toEqual([
       'CRITICAL',
       'WARNING',
@@ -185,7 +186,15 @@ describe('output', () => {
 
   it('reports a clean review without inventing findings', () => {
     const text = formatReview(
-      { agent_name: 'A', verdict: 'approve', score: 100, findings: [], blockers: 0 } as never,
+      {
+        agent_name: 'A',
+        verdict: 'approve',
+        score: 100,
+        findings: [],
+        blockers: 0,
+        // Required by the contract, because the exit code is read against it.
+        fail_on: 'critical',
+      } satisfies DiffReviewBrief,
       { branch: null, untracked: [] },
     );
     expect(text).toContain('No findings.');
@@ -205,6 +214,22 @@ describe('argument parsing', () => {
       agentId: 'a-1',
       json: true,
     });
+  });
+
+  it('rejects a flag whose value is missing or is another flag', () => {
+    // Falling through would run a PAID review against whichever reviewer is
+    // first, which is not the one the caller named.
+    expect(parseArgs(['review', '--agent']).badFlag).toBe('--agent');
+    expect(parseArgs(['review', '--agent', '--json']).badFlag).toBe('--agent');
+    expect(parseArgs(['review', '--mode']).badFlag).toBe('--mode');
+  });
+
+  it('rejects an unrecognised flag instead of dropping it', () => {
+    expect(parseArgs(['review', '--dry-run']).badFlag).toBe('--dry-run');
+  });
+
+  it('takes no badFlag on a well-formed invocation', () => {
+    expect(parseArgs(['review', '--mode', 'working', '--agent', 'a-1']).badFlag).toBeUndefined();
   });
 
   it('recognises -h and --help', () => {

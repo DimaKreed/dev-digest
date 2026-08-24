@@ -20,6 +20,16 @@ import type {
 const DEFAULT_STRATEGY = 'single-pass' as const;
 
 /**
+ * Retry budget for the one engine call this route makes.
+ *
+ * Lower than a PR review's, on purpose: that path is fire-and-forget with SSE
+ * and can afford to keep trying, while this one holds a synchronous caller who
+ * will give up at its own deadline. Retrying past that point spends money on a
+ * result nobody will read.
+ */
+const DIFF_REVIEW_MAX_RETRIES = 1;
+
+/**
  * Review an arbitrary patch (ring 2) — the same engine a pull-request review
  * runs, over a diff that belongs to no pull request.
  *
@@ -48,7 +58,16 @@ export class DiffReviewService {
 
   async review(
     workspaceId: string,
-    input: { patch: string; agentId?: string | undefined; task?: string | undefined },
+    input: {
+      patch: string;
+      agentId?: string | undefined;
+      task?: string | undefined;
+      /**
+       * True once the caller has hung up. Checked between chunks, so a CLI that
+       * timed out stops the spend instead of paying for a result nobody reads.
+       */
+      abandoned?: (() => boolean) | undefined;
+    },
   ): Promise<DiffReviewResponse> {
     const agent = await this.resolveAgent(workspaceId, input.agentId);
 
@@ -64,7 +83,7 @@ export class DiffReviewService {
       .filter((l) => l.skill.enabled)
       .map((l) => l.skill.body);
 
-    const llm = await this.deps.llm(agent.provider as DiffReviewProvider);
+    const llm = await this.deps.llm(agent.provider);
 
     const outcome = await reviewPullRequest({
       systemPrompt: agent.systemPrompt,
@@ -78,6 +97,22 @@ export class DiffReviewService {
       // WARNING gate, or the scope layer could turn a red gate green.
       allowDefer: agent.ciFailOn !== 'warning',
       ...(input.task ? { task: input.task } : {}),
+      // Bounded retries: the caller waits synchronously, so an unbounded retry
+      // chain would run past any client deadline and spend the whole time.
+      maxRetries: DIFF_REVIEW_MAX_RETRIES,
+      // The engine's cancellation seam, the same one run-executor uses for a
+      // cancelled run. It is checked between chunks, so it stops the NEXT call
+      // rather than the one in flight — which is what bounds a map-reduce run
+      // after the client has gone.
+      ...(input.abandoned
+        ? {
+            checkCancelled: () => {
+              if (input.abandoned?.()) {
+                throw new ValidationError('The caller stopped waiting for this review');
+              }
+            },
+          }
+        : {}),
     });
 
     return {

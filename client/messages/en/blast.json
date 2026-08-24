@@ -31,14 +31,11 @@
   "reason": "Reason: {reason}",
   "error": {
     "title": "Couldn't load the blast radius",
-    "body": "The blast radius for this pull request could not be computed.",
-    "retry": "Try again"
+    "body": "The blast radius for this pull request could not be computed."
   },
   "symbol": {
     "noCallers": "No callers found for this symbol."
   },
-  "endpointsLabel": "Endpoints affected",
-  "cronsLabel": "Jobs affected",
   "openInGithub": "View on GitHub",
   "legend": {
     "symbol": "changed symbol",

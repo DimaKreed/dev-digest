@@ -14,7 +14,7 @@ import { PrDetailHeader } from "./_components/PrDetailHeader";
 import { OverviewTab } from "./_components/OverviewTab";
 import { FindingsTab } from "./_components/FindingsTab";
 import { DiffTab } from "./_components/DiffTab";
-import { BlastTab } from "./_components/BlastTab";
+import { BlastTab, type BlastView } from "./_components/BlastTab";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
 import { usePullDetail, usePulls } from "../../../../../lib/hooks";
 import { useQueryClient } from "@tanstack/react-query";
@@ -138,8 +138,8 @@ export default function PRDetailPage() {
     setParam("order", next === "smart" ? null : next);
 
   // Blast radius view (tree | graph), in the URL for the same reason as ?order.
-  const blastView = search.get("view") === "graph" ? "graph" : "tree";
-  const setBlastView = (next: string) =>
+  const blastView: BlastView = search.get("view") === "graph" ? "graph" : "tree";
+  const setBlastView = (next: BlastView) =>
     setParam("view", next === "tree" ? null : next);
 
   const lineRange = parseLineRange(search.get("line"));

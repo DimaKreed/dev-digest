@@ -47,5 +47,8 @@ export async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   console.error('devdigest-mcp failed to start:', error);
-  process.exit(1);
+  // `exitCode`, not `exit()`: an MCP server is always launched with its streams
+  // piped, so the write above is asynchronous — exiting outright discards the
+  // one diagnostic that explains why the server never came up. See insights.md.
+  process.exitCode = 1;
 });

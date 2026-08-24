@@ -102,7 +102,7 @@ export function formatReview(
   // number alone.
   lines.push(
     `Verdict: ${review.verdict} · score ${review.score ?? 'n/a'} · ` +
-      `${review.blockers} blocking at gate "${review.fail_on ?? 'critical'}"`,
+      `${review.blockers} blocking at gate "${review.fail_on}"`,
   );
 
   // Stated, not implied. A brand-new file that was never reviewed is exactly the

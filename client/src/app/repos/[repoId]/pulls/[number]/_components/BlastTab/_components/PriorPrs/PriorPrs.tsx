@@ -13,7 +13,7 @@ import { useTranslations } from "next-intl";
 import { Badge, Icon, Skeleton } from "@devdigest/ui";
 import type { PriorPr } from "@devdigest/shared";
 import { useBlastHistoryNotes } from "@/lib/hooks/blast";
-import { s } from "./styles";
+import { s } from "../../styles";
 
 export function PriorPrs({ prId, items }: { prId: string | null; items: PriorPr[] }) {
   const t = useTranslations("blast");
@@ -22,11 +22,15 @@ export function PriorPrs({ prId, items }: { prId: string | null; items: PriorPr[
 
   // One call, on the first expand. `isIdle` is what keeps a collapse/expand
   // cycle from paying for the same notes twice.
+  //
+  // The mutation fires HERE and not inside the `setOpen` updater: an updater
+  // must be pure, React may invoke it more than once per dispatch, and
+  // `reactStrictMode` is on — so a side effect in there buys the same notes
+  // twice on the first click. `open` from the render closure is accurate at
+  // click time, so nothing is lost by reading it directly.
   const toggle = () => {
-    setOpen((wasOpen) => {
-      if (!wasOpen && notes.isIdle && items.length > 0) notes.mutate();
-      return !wasOpen;
-    });
+    if (!open && notes.isIdle && items.length > 0) notes.mutate();
+    setOpen((wasOpen) => !wasOpen);
   };
 
   const noteFor = (prNumber: number): string | undefined =>

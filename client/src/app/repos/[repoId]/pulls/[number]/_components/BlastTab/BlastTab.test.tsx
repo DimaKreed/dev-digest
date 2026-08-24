@@ -99,6 +99,7 @@ beforeEach(() => {
   onOpenFile.mockClear();
   notesMutate.mockClear();
   refetch.mockClear();
+  setView.mockClear();
 });
 afterEach(cleanup);
 
@@ -168,8 +169,11 @@ describe("the tree", () => {
     renderTab({ prFilePaths: new Set(["src/api/public/index.ts"]) });
 
     fireEvent.click(screen.getByRole("button", { name: /rateLimit/ }));
-    fireEvent.click(screen.getByText("src/api/public/index.ts:23"));
+    // In-diff renders a <button>; out-of-diff renders an <a href>. Asserting the
+    // role is what makes each test say which affordance it expects.
+    fireEvent.click(screen.getByRole("button", { name: "src/api/public/index.ts:23" }));
 
+    expect(onOpenFile).toHaveBeenCalledTimes(1);
     expect(onOpenFile).toHaveBeenCalledWith("src/api/public/index.ts", 23, 23);
   });
 
@@ -180,7 +184,7 @@ describe("the tree", () => {
     renderTab({ prFilePaths: new Set() });
 
     fireEvent.click(screen.getByRole("button", { name: /rateLimit/ }));
-    const link = screen.getByText("src/api/public/index.ts:23");
+    const link = screen.getByRole("link", { name: "src/api/public/index.ts:23" });
     fireEvent.click(link);
 
     expect(onOpenFile).not.toHaveBeenCalled();
@@ -231,10 +235,26 @@ describe("the graph", () => {
     const { container } = renderTab({ view: "graph" });
 
     // 2 callers x 2 endpoints would be 4 caller→endpoint edges if the flat
-    // per-symbol union were used; the real answer is 2, plus 2 symbol→caller.
-    // `[data-edge]` excludes the paths inside the icon glyphs.
-    expect(container.querySelectorAll("[data-edge]")).toHaveLength(4);
+    // per-symbol union were used; the real answer is 2. Asserted per kind so an
+    // offsetting regression in the other group cannot keep the total at 4.
+    expect(container.querySelectorAll(`[data-edge="caller-endpoint"]`)).toHaveLength(2);
+    expect(container.querySelectorAll(`[data-edge="symbol-caller"]`)).toHaveLength(2);
     expect(screen.getByRole("img", { name: "Blast radius graph" })).toBeInTheDocument();
+  });
+});
+
+describe("the view toggle", () => {
+  it("reports the chosen view to the caller so it reaches the URL", () => {
+    blastState.data = response({ downstream: TWO_CALLERS });
+    renderTab({ view: "tree" });
+
+    const graph = screen.getByRole("button", { name: "graph" });
+    expect(screen.getByRole("button", { name: "tree" })).toHaveAttribute("aria-pressed", "true");
+    expect(graph).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(graph);
+    expect(setView).toHaveBeenCalledTimes(1);
+    expect(setView).toHaveBeenCalledWith("graph");
   });
 });
 
@@ -293,6 +313,6 @@ describe("loading and failure", () => {
     renderTab();
 
     fireEvent.click(screen.getByRole("button", { name: /retry|try again/i }));
-    expect(refetch).toHaveBeenCalled();
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });

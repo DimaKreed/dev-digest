@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { DiffReviewRequest } from '@devdigest/shared';
-import { parseUnifiedDiff } from '../../adapters/git/diff-parser.js';
 import { getContext } from '../_shared/context.js';
 import { DiffReviewService } from './service.js';
 
@@ -24,7 +23,7 @@ export default async function diffReviewRoutes(appBase: FastifyInstance) {
   const service = new DiffReviewService({
     agents: app.container.agentsRepo,
     llm: (provider) => app.container.llm(provider),
-    parseDiff: parseUnifiedDiff,
+    parseDiff: app.container.parseDiff,
   });
 
   app.post(
@@ -35,7 +34,14 @@ export default async function diffReviewRoutes(appBase: FastifyInstance) {
     },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      return service.review(workspaceId, req.body);
+      // A hang-up is the normal end of a CLI review that outran its own
+      // deadline. Without this the handler runs to completion and spends the
+      // full token budget on a body nothing will read.
+      let abandoned = false;
+      req.raw.on('close', () => {
+        abandoned = true;
+      });
+      return service.review(workspaceId, { ...req.body, abandoned: () => abandoned });
     },
   );
 }

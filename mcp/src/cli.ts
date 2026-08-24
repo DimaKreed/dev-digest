@@ -22,6 +22,8 @@ import {
 
 interface Args {
   command: string | undefined;
+  /** Set when a flag arrived without a usable value, or is unrecognised. */
+  badFlag: string | undefined;
   mode: string;
   agentId: string | undefined;
   json: boolean;
@@ -31,6 +33,7 @@ interface Args {
 export function parseArgs(argvSlice: string[]): Args {
   const args: Args = {
     command: undefined,
+    badFlag: undefined,
     mode: 'working',
     agentId: undefined,
     json: false,
@@ -41,13 +44,20 @@ export function parseArgs(argvSlice: string[]): Args {
     const token = argvSlice[i];
     if (token === '-h' || token === '--help') args.help = true;
     else if (token === '--json') args.json = true;
-    else if (token === '--mode') {
+    else if (token === '--mode' || token === '--agent') {
+      // A value that is absent or is itself a flag is a typo, not a default.
+      // Left to fall through, `--agent` with no value would run a paid review
+      // against whichever reviewer happens to be first.
+      const value = argvSlice[i + 1];
+      if (value === undefined || value.startsWith('-')) {
+        args.badFlag = token;
+        break;
+      }
       i += 1;
-      args.mode = argvSlice[i] ?? '';
-    } else if (token === '--agent') {
-      i += 1;
-      args.agentId = argvSlice[i];
+      if (token === '--mode') args.mode = value;
+      else args.agentId = value;
     } else if (token && !token.startsWith('-') && !args.command) args.command = token;
+    else if (token && token.startsWith('-')) args.badFlag = token;
   }
 
   return args;
@@ -82,6 +92,16 @@ export function failureMessage(failure: ReviewFailure): string {
 
 export async function main(argvSlice: string[]): Promise<number> {
   const args = parseArgs(argvSlice);
+
+  // --help still wins: someone asking how to use it should get the help, not a
+  // complaint about the flag they were asking about.
+  if (args.badFlag && !args.help) {
+    stderr.write(
+      `${args.badFlag} needs a value, or is not a recognised option. ` +
+        'Run `devdigest review --help`.\n',
+    );
+    return EXIT_ERROR;
+  }
 
   if (args.help || !args.command) {
     stdout.write(`${HELP}\n`);
