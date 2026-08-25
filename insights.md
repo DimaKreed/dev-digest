@@ -126,6 +126,19 @@ Changing the rule is now a three-file edit. _2026-08-08_
 
 ## Tool & Library Notes
 
+### `tsconfig.json`'s `include` differs per package, so `pnpm typecheck` proves nothing about tests in `server/` or `reviewer-core/`
+**Symptom:** adding a required field to a shared Zod contract left 14 test fixtures incomplete.
+`cd server && pnpm typecheck` passed clean, and all 14 surfaced as runtime `AssertionError`s from
+vitest instead — with messages about empty arrays rather than about a missing property.
+**Rule:** `server/tsconfig.json` and `reviewer-core/tsconfig.json` set
+`"include": ["src/**/*.ts"]`; `mcp/` adds `"test/**/*.ts"` and `client/` includes everything. So a
+green typecheck in server or reviewer-core says nothing about their `test/` trees. After any
+contract or interface change, run the suite — the typecheck is not a proxy for it. When a new
+required field would touch many fixtures, add a factory in the test file that fills a sensible
+default (see `test/blast.test.ts`'s `blastRead` deriving `viaFile` from the changed symbols) so
+tests unrelated to the field stay silent about it while tests about it must state it.
+_2026-08-25_
+
 ### A skill in `.claude/skills/` can confidently describe a codebase this repo does not have
 **Symptom:** `react-best-practices/SKILL.md` told agents to use "the project's
 `useApiQuery`/`useApiMutation` core hooks" and to style with Tailwind utility classes, preferring
