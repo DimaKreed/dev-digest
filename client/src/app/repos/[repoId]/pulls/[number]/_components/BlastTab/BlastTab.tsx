@@ -14,7 +14,8 @@ import { useBlastRadius } from "@/lib/hooks/blast";
 import { BlastGraph } from "./_components/BlastGraph";
 import { BlastTree, type BlastLinkContext } from "./_components/BlastTree";
 import { PriorPrs } from "./_components/PriorPrs";
-import { partitionByCallability } from "./helpers";
+import { UncallableSymbols } from "./_components/UncallableSymbols";
+import { partitionByResolution } from "./helpers";
 import { s } from "./styles";
 
 /** The two renderings of the same data. A closed set, so it is a union. */
@@ -81,10 +82,11 @@ export function BlastTab({
   const crons = new Set(data.downstream.flatMap((d) => d.crons_affected));
   const callerCount = data.downstream.reduce((n, d) => n + d.callers.length, 0);
 
-  // Types are set aside rather than listed: the index resolves invocations, so a
-  // caller count on an interface is a question that does not apply. The count is
-  // reported below the tree — set aside is not the same as dropped.
-  const { callable, uncallable } = partitionByCallability(data.downstream, data.changed_symbols);
+  // Types are set aside into their own section rather than listed in the tree:
+  // the index resolves invocations, so a caller count on an interface is a
+  // question that does not apply. They are still shown, and still counted — set
+  // aside is not the same as dropped.
+  const { callable, uncallable } = partitionByResolution(data.downstream, data.changed_symbols);
 
   // Over anything short of a complete index a zero is ignorance, not a finding,
   // and the rows say so instead of printing a number they cannot support.
@@ -148,9 +150,7 @@ export function BlastTab({
         />
       )}
 
-      {uncallable > 0 && view === "tree" && (
-        <span style={s.meta}>{t("uncallable", { count: uncallable })}</span>
-      )}
+      {view === "tree" && <UncallableSymbols items={uncallable} />}
 
       <PriorPrs prId={prId} items={data.prior_prs} />
     </section>

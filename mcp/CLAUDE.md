@@ -56,6 +56,11 @@ npm run -s start    # stdio server; -s matters, see below
   exactly the inputs where the emptiness is meaningless (`empty_reason: 'not_indexed'`, which
   covers `partial` as well as `degraded`). Softening that branch to a success is the one
   change this tool must not take. See README for the three-way split.
+- **`no_callers` must keep naming WHY each symbol has none.** It is a success, and it is four
+  different facts: only `unreferenced` is a measured absence. A type was never callable, and
+  an `unresolved` name IS used somewhere the import graph cannot prove — usually a call
+  through an injected port. Rewriting that message back into one sentence about "nothing
+  calls the changed code" restores the same wrong inference in a quieter place.
 - **Onion layering** applies here as it does in `server/`, with the ring map above. Two
   readings are deliberate: the MCP SDK is transport framework (rings 4–5, as Fastify is for
   the server), while a raw `fetch` is a true adapter and lives only in

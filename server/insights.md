@@ -11,6 +11,31 @@ Maintained by the [engineering-insights](../.claude/skills/engineering-insights/
 
 ## What Doesn't Work
 
+### `repo_index_state.status` means "nothing threw", not "the data is there" — never branch a UI state on it
+**Symptom:** `status: 'full'`, `files_indexed: 548`, and `file_edges` empty. Every consumer that
+depends on the graph — `decl_file` resolution, `file_rank`, blast radius — returned nothing, and
+blast reported `state: 'ok'`, i.e. a confident "nothing calls this code" over a measurement that
+never happened.
+**Rule:** `buildEdges` is deliberately un-throwing (it degrades to `[]` on any cruise failure), so
+the pipeline stamps `full` on a run that produced no graph. Branch on the observable count instead:
+`stats.edgesWritten === 0` over a non-empty `files_indexed` is `degraded`, and that outranks
+whatever `status` claims — see `src/modules/blast/helpers.ts:104`. Zero files stays `ok`; an empty
+repository is not a broken index. The same shape applies to any future consumer of
+`repo_index_state`: read the counter the pipeline already writes, not its self-assessment.
+_2026-08-25_
+
+### A cap applied BEFORE grouping turns other groups into zeros that read as measurements
+**Symptom:** `MAX_CALLERS_PER_SYMBOL = 20` was applied as `callers.slice(0, 20)` over the flat
+rank-sorted array. On a 130-symbol pull request 77 real callers across 45 symbols became 20 rows
+covering 13, and the other 32 rendered "0 callers" — indistinguishable from a symbol nothing calls.
+**Rule:** if the question is per-group, cap per group and add a separate total ceiling; the name of
+the constant is not the enforcement. Then report what was cut — `cappedSymbols` on the facade
+result turns into `state: 'partial'`, `reason: 'callers_capped'`
+(`src/modules/repo-intel/service.ts:490`). A budget-produced zero handed over as a complete answer
+is the same masking as an empty array standing in for missing data, and it is invisible: nothing
+throws and no count looks wrong.
+_2026-08-25_
+
 ### De-duplicating model output by its TEXT does not work here — the model rewords the same claim every call
 **Symptom:** re-scan preservation keyed "already triaged" on `normalizeRule` (lowercase, collapse
 whitespace, strip trailing punctuation). Against the real extractor it suppressed **0 of 4** triaged
@@ -109,6 +134,22 @@ import erases at runtime but is still an import edge to dependency-cruiser. So f
 `ports.ts` re-exports from `db/rows.ts`, and `helpers.ts` and `repository.ts` both import inward
 from it. `src/modules/skills/ports.ts` _2026-08-03_
 
+### A delegating facade makes a symbol NAME a non-identity, so anything keyed on it merges two declarations
+**Symptom:** the blast radius listed `getPull` twice with the same five callers, and `getIntent`,
+`getRepo`, `upsertIntent`, `getPrFiles`, `markReviewed` the same way — 19 phantom caller rows in a
+list of 136.
+**Rule:** `ReviewRepository` forwards every method to `repository/pull.repo.ts`
+(`src/modules/reviews/repository.ts:24`), so both files declare the name and `symbols` holds two
+rows for it. Key on `(name, decl_file)` wherever symbols are grouped, capped, deduped or sorted —
+`references.decl_file` already carries it per row, so no new data is needed, only returning it
+(`src/modules/repo-intel/repository.ts:529`). The self-reference guard has to move to the same key:
+a reference inside `repository.ts` is not a downstream caller of ITS `getPull` but IS one of the
+delegate's. Sorting needs the file as a third key or two rows sharing a name order themselves by
+whatever Postgres returned. Reference COUNTS stay keyed on the name alone — "how often does this
+repo say `getPull`" is a fact about the name, and a reference tied to neither declaration cannot be
+attributed to one.
+_2026-08-25_
+
 ### A new module whose tables another repository already owns ships NO `repository.ts` — a port the container's existing repo satisfies structurally
 **Symptom:** the onion skill's C1–C3 read as "a slice is `routes.ts` → `service.ts` → `repository.ts`
 + `ports.ts`", so a new `smart-diff` module looks like it needs a repository. Writing one puts a
@@ -126,6 +167,21 @@ arriving through `Container`. Reviewed and ruled compliant, not merely tolerated
 _2026-08-08_
 
 ## Tool & Library Notes
+
+### dependency-cruiser hides `import type` unless `tsPreCompilationDeps` is on, and that is how DI calls go unresolved
+**Symptom:** `file_edges` had 977 rows and none of them type-only. `pipeline/full.ts` calls
+`repository.getRepoBasics()` and imports `RepoIntelRepository` from `../repository.js`, yet no
+`full.ts → repository.ts` edge existed, so `references.decl_file` stayed NULL and blast radius
+reported 0 callers for 22 real methods.
+**Rule:** the default output is *post-compilation* dependencies, and `import type` does not survive
+compilation. In this codebase a typed parameter IS the dependency — narrow DI passes the object in
+and only the annotation names its module — so without the flag every call through an injected
+object is unresolvable. Set `tsPreCompilationDeps: true` in the adapter's cruise options
+(`src/adapters/depgraph/index.ts:66`); it needs no tsconfig, which matters because this repo has no
+root one. `.dependency-cruiser.cjs:114` has carried the flag for `pnpm arch` from the start, so the
+two were measuring different graphs. Measured: 977 → 1130 edges, resolved references 1103 → 1308.
+`enhancedResolveOptions` changes nothing here — don't add it.
+_2026-08-25_
 
 ### A dependency-cruiser rule cannot see a type that arrives through the `Container` God object
 **Symptom:** `h8-no-db-handle-above-repository` in `.dependency-cruiser.cjs` reports 0 hits even

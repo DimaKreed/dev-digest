@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { createFakeApi } from '../src/adapters/mocks.js';
 import { formatBlastRadius } from '../src/domain/format.js';
 import { CALLERS_PER_SYMBOL } from '../src/domain/limits.js';
-import { getBlastRadius, readIndexHealth } from '../src/usecases/get-blast-radius.js';
+import { blastNoCallers } from '../src/domain/errors.js';
+import {
+  getBlastRadius,
+  readIndexHealth,
+  readResolution,
+} from '../src/usecases/get-blast-radius.js';
 import { BLAST_OK, PULL, REPO, pullsFor } from './fixtures.js';
 
 /**
@@ -216,5 +221,203 @@ describe('formatBlastRadius', () => {
         'Endpoints affected: GET /health, POST /pay',
       );
     }
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// An empty answer is four facts, and "nothing calls the changed code" is only
+// one of them. It was the one being reported for all four.
+// ---------------------------------------------------------------------------
+
+describe('readResolution defaults to the cautious branch', () => {
+  it('reads a resolved caller as found whatever the label says', () => {
+    expect(readResolution('not_callable', 3)).toBe('found');
+  });
+
+  it.each([
+    ['not_callable', 'notCallable'],
+    ['unreferenced', 'unreferenced'],
+    ['unresolved', 'unresolved'],
+  ])('maps %s', (value, expected) => {
+    expect(readResolution(value, 0)).toBe(expected);
+  });
+
+  it.each([undefined, null, '', 'something-new'])(
+    'reads %s as unresolved, never as a measured absence',
+    (value) => {
+      // The whole safety property of a tolerant schema: an unrecognised value
+      // must degrade into "could not tell", not into "nothing to see".
+      expect(readResolution(value, 0)).toBe('unresolved');
+    },
+  );
+});
+
+describe('the tally says why the symbols without callers have none', () => {
+  const row = (symbol: string, resolution: string, mentions = 0) => ({
+    symbol,
+    callers: [],
+    endpoints_affected: [],
+    crons_affected: [],
+    resolution,
+    mentions,
+  });
+
+  it('counts each reason separately', async () => {
+    const result = await getBlastRadius(
+      deps({
+        changed_symbols: [
+          { name: 'RowShape', file: 'a.ts', kind: 'interface' },
+          { name: 'brandNew', file: 'a.ts', kind: 'function' },
+          { name: 'github', file: 'a.ts', kind: 'method' },
+        ],
+        downstream: [
+          row('RowShape', 'not_callable'),
+          row('brandNew', 'unreferenced'),
+          row('github', 'unresolved', 8),
+        ],
+        state: 'ok',
+      }),
+      input,
+    );
+    if (!result.ok) return expect.fail('expected ok');
+
+    expect(result.value.tally).toEqual({
+      found: 0,
+      notCallable: 1,
+      unreferenced: 1,
+      unresolved: 1,
+    });
+    expect(result.value.emptyReason).toBe('no_callers');
+  });
+
+  it('counts a row with callers as found even when the server sent no resolution', async () => {
+    const result = await getBlastRadius(deps(BLAST_OK), input);
+    if (!result.ok) return expect.fail('expected ok');
+
+    expect(result.value.tally.found).toBeGreaterThan(0);
+    expect(result.value.tally.unresolved).toBe(0);
+  });
+});
+
+describe('blastNoCallers refuses to call unmeasured silence a measurement', () => {
+  it('claims a measured result only for the names nothing references', () => {
+    const msg = blastNoCallers('acme/api', 7, 1, {
+      notCallable: 0,
+      unreferenced: 1,
+      unresolved: 0,
+    });
+
+    expect(msg).toContain('measured result');
+  });
+
+  it('says the callers exist when the names were referenced but unresolvable', () => {
+    const msg = blastNoCallers('acme/api', 7, 1, {
+      notCallable: 0,
+      unreferenced: 0,
+      unresolved: 1,
+    });
+
+    expect(msg).toContain('not provable from the import graph');
+    // The sentence a model must not be able to read out of this case.
+    expect(msg).not.toContain('this is a measured result');
+  });
+
+  it('explains that a type was never callable rather than counting it as clean', () => {
+    const msg = blastNoCallers('acme/api', 7, 1, {
+      notCallable: 1,
+      unreferenced: 0,
+      unresolved: 0,
+    });
+
+    expect(msg).toContain('annotated rather than invoked');
+    expect(msg).not.toContain('this is a measured result');
+  });
+
+  it('always warns against reading it as containment', () => {
+    const msg = blastNoCallers('acme/api', 7, 3, {
+      notCallable: 1,
+      unreferenced: 1,
+      unresolved: 1,
+    });
+
+    expect(msg).toContain('Do not read this as "the change is contained"');
+  });
+});
+
+describe('two declarations of one name stay distinguishable', () => {
+  const twin = (file: string, callers: number) => ({
+    symbol: 'getPull',
+    file,
+    callers: Array.from({ length: callers }, (_, i) => ({
+      name: `use${i}`,
+      file: `c${i}.ts`,
+      line: i + 1,
+      endpoints_affected: [],
+      crons_affected: [],
+    })),
+    endpoints_affected: [],
+    crons_affected: [],
+    resolution: 'found',
+    mentions: callers,
+  });
+
+  it('prints the declaring file, so the two entries are not one fact twice', () => {
+    const out = formatBlastRadius(
+      {
+        symbolCount: 2,
+        downstream: [
+          { symbol: 'getPull', file: 'src/repository.ts', callers: [], callerCount: 5, endpoints: [], crons: [] },
+          { symbol: 'getPull', file: 'src/repository/pull.repo.ts', callers: [], callerCount: 1, endpoints: [], crons: [] },
+        ],
+        total: 2,
+        totalCallers: 6,
+        endpoints: [],
+        crons: [],
+        summary: null,
+        callersPerSymbol: CALLERS_PER_SYMBOL,
+      },
+      'concise',
+    );
+
+    expect(out).toContain('[src/repository.ts]');
+    expect(out).toContain('[src/repository/pull.repo.ts]');
+  });
+
+  it('omits the bracket entirely when the server sent no file', () => {
+    // An older server, or the degraded path. Printing `[]` would read as a fact.
+    const out = formatBlastRadius(
+      {
+        symbolCount: 1,
+        downstream: [{ symbol: 'helper', callers: [], callerCount: 2, endpoints: [], crons: [] }],
+        total: 1,
+        totalCallers: 2,
+        endpoints: [],
+        crons: [],
+        summary: null,
+        callersPerSymbol: CALLERS_PER_SYMBOL,
+      },
+      'concise',
+    );
+
+    expect(out).toContain('helper');
+    expect(out).not.toContain('[');
+  });
+
+  it('breaks the sort tie on the file, so repeated calls agree', async () => {
+    const result = await getBlastRadius(
+      deps({
+        changed_symbols: [
+          { name: 'getPull', file: 'src/z.ts', kind: 'method' },
+          { name: 'getPull', file: 'src/a.ts', kind: 'method' },
+        ],
+        downstream: [twin('src/z.ts', 2), twin('src/a.ts', 2)],
+        state: 'ok',
+      }),
+      input,
+    );
+    if (!result.ok) return expect.fail('expected ok');
+
+    expect(result.value.downstream.map((d) => d.file)).toEqual(['src/a.ts', 'src/z.ts']);
   });
 });

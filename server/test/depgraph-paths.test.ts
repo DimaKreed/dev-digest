@@ -64,6 +64,24 @@ describe('DepCruiseGraph path normalisation', () => {
     }
   });
 
+  it('counts a type-only import as an edge', async () => {
+    // `blast/service.ts` imports `./ports.js` with `import type` and nothing
+    // else from it. dependency-cruiser hides such deps unless
+    // `tsPreCompilationDeps` is on, because they do not survive compilation —
+    // but they are exactly how this codebase declares an injected dependency,
+    // so without them a call through the injected object can never resolve its
+    // declaration and `decl_file` stays NULL.
+    const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+    const files = ['server/src/modules/blast/service.ts', 'server/src/modules/blast/ports.ts'];
+
+    const edges = await new DepCruiseGraph().buildEdges(root, files);
+
+    expect(edges).toContainEqual({
+      from: 'server/src/modules/blast/service.ts',
+      to: 'server/src/modules/blast/ports.ts',
+    });
+  });
+
   it('returns [] for an empty input rather than cruising the world', async () => {
     expect(await new DepCruiseGraph().buildEdges('/anywhere', [])).toEqual([]);
   });

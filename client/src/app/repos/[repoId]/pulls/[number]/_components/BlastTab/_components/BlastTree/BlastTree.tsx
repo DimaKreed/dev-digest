@@ -97,7 +97,18 @@ function SymbolRow({
 }) {
   const t = useTranslations("blast");
   const [open, setOpen] = React.useState(false);
+
+  // `measured` outranks `resolution`. Over an incomplete index every empty list
+  // is ignorance first, whatever the server managed to say about WHY — the
+  // reasons below are all reasons within a working index.
   const unknown = !measured && node.callers.length === 0;
+  const label = unknown
+    ? t("callerUnknown")
+    : node.callers.length > 0
+      ? t("callerCount", { count: node.callers.length })
+      : node.resolution === "unreferenced"
+        ? t("resolution.unreferenced")
+        : t("resolution.unresolved", { count: node.mentions });
 
   return (
     <div style={s.symbolRow}>
@@ -112,9 +123,12 @@ function SymbolRow({
           style={{ transform: open ? "rotate(90deg)" : undefined }}
         />
         <span style={s.symbolName}>{node.symbol}()</span>
-        <span style={s.symbolCount}>
-          {unknown ? t("callerUnknown") : t("callerCount", { count: node.callers.length })}
-        </span>
+        {/* The declaring file, because the name is not unique. A facade
+            forwarding to a split repository declares `getPull` twice, and two
+            rows reading `getPull()` with different caller lists are unreadable
+            without it. */}
+        {node.file && <span style={s.symbolFile}>{node.file}</span>}
+        <span style={s.symbolCount}>{label}</span>
       </button>
 
       {open && (
@@ -130,7 +144,11 @@ function SymbolRow({
             </div>
           ) : (
             <span style={{ ...s.empty, paddingInlineStart: 20 }}>
-              {unknown ? t("symbol.unknownCallers") : t("symbol.noCallers")}
+              {unknown
+                ? t("symbol.unknownCallers")
+                : node.resolution === "unreferenced"
+                  ? t("symbol.unreferencedBody")
+                  : t("symbol.unresolvedBody", { count: node.mentions })}
             </span>
           )}
 
@@ -166,13 +184,17 @@ export function BlastTree({
 }) {
   return (
     <div>
-      {/* The index disambiguates: DownstreamNode carries only a name, and two
-          changed FILES can each declare the same symbol — the server dedupes
-          changed symbols by name+file, not by name. Without the tiebreak those
-          rows share a React identity and SymbolRow holds its own collapse state,
-          so expanding one would toggle the other. */}
+      {/* Keyed on name AND declaring file: two changed files can declare the
+          same symbol, and rows sharing a React identity would share collapse
+          state too — expanding one would toggle the other. The index stays as a
+          last resort for a response that somehow carries neither. */}
       {downstream.map((node, i) => (
-        <SymbolRow key={`${node.symbol}#${i}`} node={node} ctx={ctx} measured={measured} />
+        <SymbolRow
+          key={`${node.symbol}#${node.file || i}`}
+          node={node}
+          ctx={ctx}
+          measured={measured}
+        />
       ))}
     </div>
   );

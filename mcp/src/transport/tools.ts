@@ -473,7 +473,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       }
       if (blast.emptyReason === 'no_callers') {
         return text(
-          blastNoCallers(args.repo, args.pr_number, blast.changedSymbols.length),
+          blastNoCallers(
+            args.repo,
+            args.pr_number,
+            blast.changedSymbols.length,
+            blast.tally,
+          ),
           structured,
         );
       }

@@ -98,8 +98,44 @@ export const BlastCallerNode = BlastCaller.extend({
 });
 export type BlastCallerNode = z.infer<typeof BlastCallerNode>;
 
+/**
+ * Why a symbol's caller list looks the way it does.
+ *
+ * An empty list is four different facts, and only one of them is a finding. The
+ * index resolves invocations through the import graph, so it can be silent for
+ * reasons that have nothing to do with whether the change is contained:
+ *
+ *  - `not_callable` — an interface or type alias. Nothing invokes it, ever, so
+ *    the question does not apply and a zero here measures nothing.
+ *  - `unreferenced` — the name appears nowhere in the index. New code, or dead.
+ *  - `unresolved` — it IS referenced, but no reference could be tied to this
+ *    declaration. Typically a call through an injected port, where the calling
+ *    file genuinely does not import the implementation — the graph is right and
+ *    still cannot prove the link. A reviewer has to look.
+ *  - `found` — callers were resolved. The only one an empty list cannot carry.
+ */
+export const CallerResolution = z.enum(['found', 'not_callable', 'unreferenced', 'unresolved']);
+export type CallerResolution = z.infer<typeof CallerResolution>;
+
 export const DownstreamNode = DownstreamImpact.extend({
   callers: z.array(BlastCallerNode),
+  /**
+   * The file that DECLARES `symbol`.
+   *
+   * A name is not an identity. A facade delegating to a split repository
+   * declares `getPull` twice — once forwarding, once for real — and a reader
+   * given only the name sees two rows it cannot tell apart, each showing the
+   * other's callers. Measured on one pull request: 6 such pairs put 19 phantom
+   * caller rows into a list of 136.
+   */
+  file: z.string().default(''),
+  resolution: CallerResolution.default('found'),
+  /**
+   * How many times the index sees this name referenced anywhere, resolved or
+   * not. Turns "unresolved" from a shrug into something actionable: eight
+   * mentions none of which could be tied to this file is a place to look.
+   */
+  mentions: z.number().int().default(0),
 });
 export type DownstreamNode = z.infer<typeof DownstreamNode>;
 

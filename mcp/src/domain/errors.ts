@@ -133,8 +133,35 @@ export function blastNoSymbols(repo: string, prNumber: number): string {
 }
 
 /** The one empty answer that IS a measured result — and it says so. */
-export function blastNoCallers(repo: string, prNumber: number, symbolCount: number): string {
-  return `${symbolCount} changed symbol(s) in ${repo} #${prNumber}, and the code index found no callers of any of them. The index covered every changed file, so this is a measured result: nothing else in this repository calls the changed code. Callers outside this repository are not visible to it.`;
+export function blastNoCallers(
+  repo: string,
+  prNumber: number,
+  symbolCount: number,
+  tally: { notCallable: number; unreferenced: number; unresolved: number },
+): string {
+  // Only `unreferenced` earns the word "measured". A type was never callable, so
+  // its silence measures nothing; an unresolved name IS used somewhere and the
+  // import graph merely could not prove where. Collapsing all three into
+  // "nothing calls the changed code" is the one sentence that makes a reader
+  // stop looking, and it was wrong for 42 of 130 symbols on a real pull request.
+  const parts: string[] = [];
+  if (tally.unreferenced > 0) {
+    parts.push(
+      `${tally.unreferenced} have no reference anywhere in the index — for those this is a measured result`,
+    );
+  }
+  if (tally.unresolved > 0) {
+    parts.push(
+      `${tally.unresolved} ARE referenced but no reference could be tied to the changed declaration, typically a call through an injected port that the calling file does not import — those callers exist and are simply not provable from the import graph`,
+    );
+  }
+  if (tally.notCallable > 0) {
+    parts.push(
+      `${tally.notCallable} are types or interfaces, which are annotated rather than invoked, so no caller was ever possible`,
+    );
+  }
+  const breakdown = parts.length > 0 ? ` Of them, ${parts.join('; ')}.` : '';
+  return `${symbolCount} changed symbol(s) in ${repo} #${prNumber}, and the code index resolved no callers of any of them.${breakdown} Do not read this as "the change is contained" unless every symbol falls in the first group. Callers outside this repository are never visible to the index.`;
 }
 
 /**

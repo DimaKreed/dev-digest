@@ -72,6 +72,12 @@ export interface BlastCallerRow {
   symbol: string;
   /** Which changed symbol this caller reaches. */
   viaSymbol: string;
+  /**
+   * Which FILE declares that symbol. A name is not an identity: a facade that
+   * delegates to a split repository declares `getPull` twice, and a consumer
+   * grouping on the name alone shows each declaration the other's callers.
+   */
+  viaFile: string;
   /** 1-based line of the reference (representative; for the BlastRadius view). */
   line: number;
   /** file_rank.rank of the caller file (0 in the degraded/ripgrep path). */
@@ -89,6 +95,13 @@ export interface BlastResult {
    * Present on the persistent (non-degraded) path; absent otherwise.
    */
   factsByFile?: Record<string, { endpoints: string[]; crons: string[] }>;
+  /**
+   * Changed symbols whose caller list was cut by a cap, plus `'__total__'` when
+   * the whole response hit `MAX_BLAST_CALLERS_TOTAL`. A capped list handed over
+   * as if it were complete is the same lie as an empty one: consumers turn this
+   * into a `partial` state rather than presenting a subset as the answer.
+   */
+  cappedSymbols?: string[];
   degraded?: boolean;
   reason?: DegradedReason;
 }
@@ -186,6 +199,12 @@ export interface RepoIntel {
    * is off or nothing is indexed.
    */
   getReverseImpact(repoId: string, files: string[]): Promise<ReverseImpactResult>;
+  /**
+   * How many times each name is referenced anywhere in the index, resolved or
+   * not. Separates "nothing mentions this" from "mentioned, but unresolvable",
+   * which an empty caller list alone cannot say.
+   */
+  getSymbolMentions(repoId: string, names: string[]): Promise<Map<string, number>>;
   getRepoMap(repoId: string, tokenBudget?: number): Promise<RepoMapResult>;
   getFileRank(repoId: string, paths: string[]): Promise<FileRankRow[]>;
   getSymbolsInFiles(repoId: string, paths: string[]): Promise<SymbolRow[]>;

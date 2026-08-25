@@ -25,24 +25,47 @@ import type {
 
 const NO_IMPACT: ReverseImpactRead = { rows: [], truncatedFrom: [] };
 
-function blastRead(over: Partial<BlastRadiusRead> = {}): BlastRadiusRead {
+/**
+ * A caller fixture may omit `viaFile`, in which case it is filled in from the
+ * one changed symbol carrying that name.
+ *
+ * The mapper keys on (name, declaring file) because a name is not an identity —
+ * a facade forwarding to a split repository declares `getPull` twice. Most tests
+ * here are about something else and have exactly one declaration per name, so
+ * making them all restate it would be noise. A test that IS about two
+ * declarations sets `viaFile` explicitly.
+ */
+type CallerFixture = Omit<BlastRadiusRead['callers'][number], 'viaFile'> & {
+  viaFile?: string;
+};
+
+function blastRead(
+  over: Omit<Partial<BlastRadiusRead>, 'callers'> & { callers?: CallerFixture[] } = {},
+): BlastRadiusRead {
+  const changedSymbols = over.changedSymbols ?? [];
+  const declOf = new Map(changedSymbols.map((sym) => [sym.name, sym.file]));
   return {
-    changedSymbols: [],
-    callers: [],
     impactedEndpoints: [],
     ...over,
+    changedSymbols,
+    callers: (over.callers ?? []).map((c) => ({
+      ...c,
+      viaFile: c.viaFile ?? declOf.get(c.viaSymbol) ?? '',
+    })),
   };
 }
 
 function map(input: {
-  blast?: Partial<BlastRadiusRead>;
+  blast?: Omit<Partial<BlastRadiusRead>, 'callers'> & { callers?: CallerFixture[] };
   impact?: ReverseImpactRead;
+  mentions?: Map<string, number>;
   indexStatus?: IndexStateRead['status'] | null;
   priorPrs?: BlastPriorPr[];
 }) {
   return toBlastResponse({
     blast: blastRead(input.blast),
     impact: input.impact ?? NO_IMPACT,
+    mentions: input.mentions,
     indexStatus: input.indexStatus === undefined ? 'full' : input.indexStatus,
     priorPrs: input.priorPrs ?? [],
   });
@@ -130,6 +153,234 @@ describe('what belongs in downstream', () => {
 
     expect(res.downstream.map((d) => d.symbol)).toEqual(['alpha', 'lonely']);
     expect(res.downstream[1]!.callers).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A symbol is (name, declaring file). A name alone is not an identity, and this
+// repository produces collisions structurally: `ReviewRepository.getPull`
+// forwards to `pull.repo.getPull`, so both files declare the name. Grouping on
+// the name put 19 phantom caller rows into a list of 136 on one pull request.
+// ---------------------------------------------------------------------------
+
+describe('two declarations of one name are two symbols', () => {
+  const changedSymbols = [
+    { file: 'src/repository.ts', name: 'getPull', kind: 'method' },
+    { file: 'src/repository/pull.repo.ts', name: 'getPull', kind: 'function' },
+  ];
+  const callers = [
+    // Five reach the facade...
+    ...Array.from({ length: 5 }, (_, i) => ({
+      file: `src/svc${i}.ts`,
+      symbol: `use${i}`,
+      viaSymbol: 'getPull',
+      viaFile: 'src/repository.ts',
+      line: i + 1,
+      rank: 5 - i,
+    })),
+    // ...and exactly one reaches the delegate it forwards to.
+    {
+      file: 'src/repository.ts',
+      symbol: 'getPull',
+      viaSymbol: 'getPull',
+      viaFile: 'src/repository/pull.repo.ts',
+      line: 40,
+      rank: 9,
+    },
+  ];
+
+  it('splits the callers between them instead of showing each both lists', () => {
+    const res = map({ blast: { changedSymbols, callers } });
+
+    const byFile = new Map(res.downstream.map((d) => [d.file, d.callers.length]));
+    expect(byFile.get('src/repository.ts')).toBe(5);
+    expect(byFile.get('src/repository/pull.repo.ts')).toBe(1);
+    // Six references in, six rows out — not eleven.
+    expect(res.downstream.reduce((total, d) => total + d.callers.length, 0)).toBe(6);
+  });
+
+  it('carries the declaring file so the two rows can be told apart', () => {
+    const res = map({ blast: { changedSymbols, callers } });
+
+    expect(res.downstream.map((d) => d.symbol)).toEqual(['getPull', 'getPull']);
+    expect(res.downstream.map((d) => d.file)).toEqual([
+      'src/repository.ts',
+      'src/repository/pull.repo.ts',
+    ]);
+  });
+
+  it('breaks a tie on the declaring file, so the order is total', () => {
+    // Same name, same caller count: without the third sort key their order is
+    // whatever the database returned, and the two rows swap between requests.
+    const res = map({
+      blast: {
+        changedSymbols: [
+          { file: 'src/z.ts', name: 'dup', kind: 'function' },
+          { file: 'src/a.ts', name: 'dup', kind: 'function' },
+        ],
+        callers: [
+          { file: 'c.ts', symbol: 'x', viaSymbol: 'dup', viaFile: 'src/z.ts', line: 1, rank: 1 },
+          { file: 'c.ts', symbol: 'y', viaSymbol: 'dup', viaFile: 'src/a.ts', line: 2, rank: 1 },
+        ],
+      },
+    });
+
+    expect(res.downstream.map((d) => d.file)).toEqual(['src/a.ts', 'src/z.ts']);
+  });
+
+  it('gives each declaration its own per-symbol budget', () => {
+    // A shared budget would let the busier declaration starve the other, which
+    // is the flat-cap bug one level down.
+    const res = map({
+      blast: {
+        changedSymbols,
+        callers: ['src/repository.ts', 'src/repository/pull.repo.ts'].flatMap((viaFile) =>
+          Array.from({ length: MAX_CALLERS_PER_SYMBOL + 3 }, (_, i) => ({
+            file: `${viaFile}-caller${i}.ts`,
+            symbol: `use${i}`,
+            viaSymbol: 'getPull',
+            viaFile,
+            line: i + 1,
+            rank: 1,
+          })),
+        ),
+      },
+    });
+
+    for (const node of res.downstream) {
+      expect(node.callers).toHaveLength(MAX_CALLERS_PER_SYMBOL);
+    }
+  });
+
+  it('excludes a reference living in its own declaring file, per declaration', () => {
+    // The self-reference guard has to compare against the caller's OWN
+    // declaration now: a reference inside `repository.ts` is not a downstream
+    // caller of `repository.ts`'s getPull, but it IS one of pull.repo's.
+    const res = map({ blast: { changedSymbols, callers } });
+
+    const facade = res.downstream.find((d) => d.file === 'src/repository.ts');
+    expect(facade!.callers.map((c) => c.file)).not.toContain('src/repository.ts');
+    const delegate = res.downstream.find((d) => d.file === 'src/repository/pull.repo.ts');
+    expect(delegate!.callers[0]!.file).toBe('src/repository.ts');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Why a caller list is empty. Four different facts arrive as the same empty
+// array, and only one of them is a finding about the change.
+// ---------------------------------------------------------------------------
+
+describe('an empty caller list says which kind of empty it is', () => {
+  const sym = (name: string, kind: string) => ({ file: 'a.ts', name, kind });
+
+  it('reports found when callers resolved', () => {
+    const res = map({
+      blast: {
+        changedSymbols: [sym('helper', 'function')],
+        callers: [{ file: 'c.ts', symbol: 'x', viaSymbol: 'helper', line: 1, rank: 1 }],
+      },
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('found');
+  });
+
+  it.each(['interface', 'type', 'enum'])('reports not_callable for a %s', (kind) => {
+    // The resolver resolves invocations; a type is annotated, never invoked.
+    const res = map({ blast: { changedSymbols: [sym('RowShape', kind)] } });
+
+    expect(res.downstream[0]!.resolution).toBe('not_callable');
+  });
+
+  it('reports unreferenced when the index has never seen the name', () => {
+    const res = map({
+      blast: { changedSymbols: [sym('brandNew', 'function')] },
+      mentions: new Map(),
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('unreferenced');
+    expect(res.downstream[0]!.mentions).toBe(0);
+  });
+
+  it('reports unresolved when the name IS referenced but nothing tied to it', () => {
+    // The injected-port case: the calling file does not import the
+    // implementation, so the import graph cannot prove a link that exists.
+    const res = map({
+      blast: { changedSymbols: [sym('github', 'method')] },
+      mentions: new Map([['github', 8]]),
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('unresolved');
+    expect(res.downstream[0]!.mentions).toBe(8);
+  });
+
+  it('lets a resolved caller outrank the kind label', () => {
+    // An interface with a real call site means the extractor got the kind wrong.
+    // Hiding the evidence is the wrong reaction to that.
+    const res = map({
+      blast: {
+        changedSymbols: [sym('RowShape', 'interface')],
+        callers: [{ file: 'c.ts', symbol: 'x', viaSymbol: 'RowShape', line: 1, rank: 1 }],
+      },
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('found');
+  });
+
+  it('treats a missing mention count as zero, never as a reference', () => {
+    // No `mentions` map at all — the caller could not supply counts. Claiming
+    // "referenced but unresolvable" would invent evidence.
+    const res = map({ blast: { changedSymbols: [sym('unknownKind', 'gadget')] } });
+
+    expect(res.downstream[0]!.resolution).toBe('unreferenced');
+  });
+
+  it('treats an unrecognised kind as callable', () => {
+    const res = map({
+      blast: { changedSymbols: [sym('widget', 'gadget')] },
+      mentions: new Map([['widget', 2]]),
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('unresolved');
+  });
+});
+
+describe('a capped caller list is partial, never complete', () => {
+  it('is partial when the facade reports a capped symbol', () => {
+    const res = map({
+      blast: {
+        changedSymbols: [{ file: 'a.ts', name: 'busy', kind: 'function' }],
+        callers: [{ file: 'c.ts', symbol: 'x', viaSymbol: 'busy', line: 1, rank: 1 }],
+        cappedSymbols: ['busy'],
+      },
+    });
+
+    expect(res.state).toBe('partial');
+    expect(res.reason).toBe('callers_capped');
+  });
+
+  it('stays ok when nothing was capped', () => {
+    const res = map({
+      blast: {
+        changedSymbols: [{ file: 'a.ts', name: 'busy', kind: 'function' }],
+        cappedSymbols: [],
+      },
+    });
+
+    expect(res.state).toBe('ok');
+  });
+
+  it('lets a partial index outrank the cap in the reason', () => {
+    // A partial index is the broader problem: it affects rows that are not here
+    // at all, not just rows this response shortened.
+    const res = map({
+      blast: {
+        changedSymbols: [{ file: 'a.ts', name: 'busy', kind: 'function' }],
+        cappedSymbols: ['busy'],
+      },
+      indexStatus: 'partial',
+    });
+
+    expect(res.reason).toBe('index_partial');
   });
 });
 

@@ -68,8 +68,19 @@ export const s = {
     fontSize: 13,
     color: "var(--text-primary)",
   } satisfies CSSProperties,
+  symbolFile: {
+    fontFamily: "var(--font-mono, monospace)",
+    fontSize: 11.5,
+    color: "var(--text-muted)",
+    // Long paths must not push the count off the row.
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minWidth: 0,
+  } satisfies CSSProperties,
   symbolCount: {
     marginLeft: "auto",
+    flexShrink: 0,
     fontSize: 11.5,
     color: "var(--text-muted)",
   } satisfies CSSProperties,
@@ -190,5 +201,29 @@ export const s = {
     fontSize: 12.5,
     lineHeight: 1.5,
     color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+
+  // --- types and interfaces (their own section; `priorSection` layout) -----
+  uncallableList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    paddingInlineStart: 14,
+    borderInlineStart: "2px solid var(--border)",
+  } satisfies CSSProperties,
+  uncallableRow: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 8,
+    flexWrap: "wrap",
+    fontSize: 12.5,
+  } satisfies CSSProperties,
+  uncallableName: {
+    fontFamily: "var(--font-mono, monospace)",
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  uncallableFile: {
+    fontFamily: "var(--font-mono, monospace)",
+    color: "var(--text-muted)",
   } satisfies CSSProperties,
 } as const;

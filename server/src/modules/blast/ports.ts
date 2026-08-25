@@ -55,6 +55,12 @@ export interface BlastCallerRead {
   symbol: string;
   /** Which changed symbol this caller reaches. */
   viaSymbol: string;
+  /**
+   * Which FILE declares that symbol. Grouping on the name alone merges two
+   * declarations that happen to share one — which a delegating facade produces
+   * for every method it forwards.
+   */
+  viaFile: string;
   line: number;
   /** file_rank.rank of the caller file; 0 on the degraded path. */
   rank: number;
@@ -65,6 +71,12 @@ export interface BlastRadiusRead {
   callers: BlastCallerRead[];
   impactedEndpoints: string[];
   factsByFile?: Record<string, { endpoints: string[]; crons: string[] }>;
+  /**
+   * Changed symbols whose caller list a cap cut short, plus `'__total__'` for
+   * the whole-response ceiling. A capped list presented as complete is the same
+   * lie as an empty one, so this turns into `partial` rather than nothing.
+   */
+  cappedSymbols?: string[];
   degraded?: boolean;
   reason?: string;
 }
@@ -94,9 +106,16 @@ export interface IndexStateRead {
   degradedReason?: string;
 }
 
-/** Exactly the three facade methods blast calls, of the facade's ten (H11). */
+/** Exactly the four facade methods blast calls, of the facade's eleven (H11). */
 export interface BlastIntelReads {
   getBlastRadius(repoId: string, changedFiles: string[]): Promise<BlastRadiusRead>;
   getReverseImpact(repoId: string, files: string[]): Promise<ReverseImpactRead>;
   getIndexState(repoId: string): Promise<IndexStateRead>;
+  /**
+   * Reference counts per name, resolved or not — what separates "nothing
+   * mentions this symbol" from "mentioned, but no mention could be tied to this
+   * declaration". Both arrive as an empty caller list; only the first is a
+   * finding.
+   */
+  getSymbolMentions(repoId: string, names: string[]): Promise<Map<string, number>>;
 }
