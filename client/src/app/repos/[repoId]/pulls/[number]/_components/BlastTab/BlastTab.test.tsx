@@ -31,6 +31,24 @@ function response(over: Partial<BlastRadiusResponse> = {}): BlastRadiusResponse 
   };
 }
 
+/**
+ * One downstream row. `resolution` and `mentions` default to the "callers were
+ * found" case, so a test that is not about them stays silent about them — but
+ * the contract makes them required, so a test that IS about them cannot forget.
+ */
+function node(
+  over: Partial<BlastRadiusResponse["downstream"][number]> & { symbol: string },
+): BlastRadiusResponse["downstream"][number] {
+  return {
+    callers: [],
+    endpoints_affected: [],
+    crons_affected: [],
+    resolution: (over.callers?.length ?? 0) > 0 ? "found" : "unreferenced",
+    mentions: 0,
+    ...over,
+  };
+}
+
 const TWO_CALLERS: BlastRadiusResponse["downstream"] = [
   {
     symbol: "rateLimit",
@@ -52,6 +70,8 @@ const TWO_CALLERS: BlastRadiusResponse["downstream"] = [
     ],
     endpoints_affected: ["GET /health", "POST /pay"],
     crons_affected: [],
+    resolution: "found",
+    mentions: 2,
   },
 ];
 
@@ -124,6 +144,8 @@ describe("the header counts what was measured", () => {
           ],
           endpoints_affected: ["POST /pay"],
           crons_affected: [],
+          resolution: "found",
+          mentions: 1,
         },
         {
           symbol: "beta",
@@ -138,6 +160,8 @@ describe("the header counts what was measured", () => {
           ],
           endpoints_affected: ["POST /pay"],
           crons_affected: [],
+          resolution: "found",
+          mentions: 1,
         },
       ],
     });
@@ -317,16 +341,38 @@ describe("a caller count says only what the index can support", () => {
   // A name of its own: TWO_CALLERS is also `rateLimit`, and a row query that
   // matches both is not testing which row said what.
   const quiet: BlastRadiusResponse["downstream"] = [
-    { symbol: "untouched", callers: [], endpoints_affected: [], crons_affected: [] },
+    node({ symbol: "untouched", resolution: "unreferenced" }),
   ];
 
-  it("prints a zero over a complete index", () => {
-    // `state: "ok"` — nothing calls this, and that IS the answer.
+  it("states the reason, never a bare zero, over a complete index", () => {
+    // `state: "ok"` — the emptiness IS the answer, and the answer is which kind
+    // of empty. "0 callers" is not a string this UI can produce any more: every
+    // zero has a reason attached, and printing the number instead of the reason
+    // is what made 117 unexamined rows look examined.
     blastState.data = response({ downstream: [...quiet, ...TWO_CALLERS], state: "ok" });
     renderTab();
 
-    expect(screen.getByText("0 callers")).toBeInTheDocument();
+    expect(screen.getByText("not referenced")).toBeInTheDocument();
+    expect(screen.queryByText("0 callers")).not.toBeInTheDocument();
     expect(screen.queryByText("callers unknown")).not.toBeInTheDocument();
+  });
+
+  it("counts the mentions when the name is used but unresolvable", () => {
+    // The injected-port case. Eight mentions none of which could be tied to this
+    // declaration is a place to look, and the row says so instead of shrugging.
+    blastState.data = response({
+      downstream: [
+        node({ symbol: "github", resolution: "unresolved", mentions: 8 }),
+        ...TWO_CALLERS,
+      ],
+      state: "ok",
+    });
+    renderTab();
+
+    expect(screen.getByText("8 mention(s), unresolved")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /github/ }));
+    expect(screen.getByText(/no mention could be tied to this declaration/)).toBeInTheDocument();
   });
 
   it("says unknown instead of zero over a partial index", () => {
@@ -379,18 +425,37 @@ describe("types are set aside, not listed", () => {
       ],
       downstream: [
         ...TWO_CALLERS,
-        { symbol: "RowShape", callers: [], endpoints_affected: [], crons_affected: [] },
-        { symbol: "Alias", callers: [], endpoints_affected: [], crons_affected: [] },
+        node({ symbol: "RowShape", resolution: "not_callable" }),
+        node({ symbol: "Alias", resolution: "not_callable" }),
       ],
     });
 
-  it("hides the type rows and says how many", () => {
+  it("keeps the type rows out of the tree, in a section of their own", () => {
     blastState.data = mixed();
     renderTab();
 
     expect(screen.queryByText("RowShape()")).not.toBeInTheDocument();
     expect(screen.queryByText("Alias()")).not.toBeInTheDocument();
-    expect(screen.getByText(/2 changed type\(s\) and interface\(s\) are not listed/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Types and interfaces/ })).toBeInTheDocument();
+  });
+
+  it("lists them by name and file once the section is expanded", () => {
+    // Set aside, not dropped: expanding must show what was held back, and from
+    // where, or the count is an unverifiable claim.
+    blastState.data = mixed();
+    renderTab();
+
+    fireEvent.click(screen.getByRole("button", { name: /Types and interfaces/ }));
+    expect(screen.getByText("RowShape")).toBeInTheDocument();
+    expect(screen.getByText("Alias")).toBeInTheDocument();
+    expect(screen.getByText(/a type is annotated rather than called/)).toBeInTheDocument();
+  });
+
+  it("shows no section at all when nothing was set aside", () => {
+    blastState.data = response({ downstream: TWO_CALLERS });
+    renderTab();
+
+    expect(screen.queryByRole("button", { name: /Types and interfaces/ })).not.toBeInTheDocument();
   });
 
   it("keeps the symbols count honest — set aside is not dropped", () => {
@@ -422,6 +487,10 @@ describe("types are set aside, not listed", () => {
           ],
           endpoints_affected: [],
           crons_affected: [],
+          // The server already applied the rule; this pins that the client
+          // honours it and does not re-hide the row from the kind.
+          resolution: "found",
+          mentions: 1,
         },
       ],
     });
@@ -440,7 +509,7 @@ describe("types are set aside, not listed", () => {
       ],
       downstream: [
         ...TWO_CALLERS,
-        { symbol: "widget", callers: [], endpoints_affected: [], crons_affected: [] },
+        node({ symbol: "widget", resolution: "unresolved" }),
       ],
     });
     renderTab();

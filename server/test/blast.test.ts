@@ -37,12 +37,14 @@ function blastRead(over: Partial<BlastRadiusRead> = {}): BlastRadiusRead {
 function map(input: {
   blast?: Partial<BlastRadiusRead>;
   impact?: ReverseImpactRead;
+  mentions?: Map<string, number>;
   indexStatus?: IndexStateRead['status'] | null;
   priorPrs?: BlastPriorPr[];
 }) {
   return toBlastResponse({
     blast: blastRead(input.blast),
     impact: input.impact ?? NO_IMPACT,
+    mentions: input.mentions,
     indexStatus: input.indexStatus === undefined ? 'full' : input.indexStatus,
     priorPrs: input.priorPrs ?? [],
   });
@@ -130,6 +132,125 @@ describe('what belongs in downstream', () => {
 
     expect(res.downstream.map((d) => d.symbol)).toEqual(['alpha', 'lonely']);
     expect(res.downstream[1]!.callers).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Why a caller list is empty. Four different facts arrive as the same empty
+// array, and only one of them is a finding about the change.
+// ---------------------------------------------------------------------------
+
+describe('an empty caller list says which kind of empty it is', () => {
+  const sym = (name: string, kind: string) => ({ file: 'a.ts', name, kind });
+
+  it('reports found when callers resolved', () => {
+    const res = map({
+      blast: {
+        changedSymbols: [sym('helper', 'function')],
+        callers: [{ file: 'c.ts', symbol: 'x', viaSymbol: 'helper', line: 1, rank: 1 }],
+      },
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('found');
+  });
+
+  it.each(['interface', 'type', 'enum'])('reports not_callable for a %s', (kind) => {
+    // The resolver resolves invocations; a type is annotated, never invoked.
+    const res = map({ blast: { changedSymbols: [sym('RowShape', kind)] } });
+
+    expect(res.downstream[0]!.resolution).toBe('not_callable');
+  });
+
+  it('reports unreferenced when the index has never seen the name', () => {
+    const res = map({
+      blast: { changedSymbols: [sym('brandNew', 'function')] },
+      mentions: new Map(),
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('unreferenced');
+    expect(res.downstream[0]!.mentions).toBe(0);
+  });
+
+  it('reports unresolved when the name IS referenced but nothing tied to it', () => {
+    // The injected-port case: the calling file does not import the
+    // implementation, so the import graph cannot prove a link that exists.
+    const res = map({
+      blast: { changedSymbols: [sym('github', 'method')] },
+      mentions: new Map([['github', 8]]),
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('unresolved');
+    expect(res.downstream[0]!.mentions).toBe(8);
+  });
+
+  it('lets a resolved caller outrank the kind label', () => {
+    // An interface with a real call site means the extractor got the kind wrong.
+    // Hiding the evidence is the wrong reaction to that.
+    const res = map({
+      blast: {
+        changedSymbols: [sym('RowShape', 'interface')],
+        callers: [{ file: 'c.ts', symbol: 'x', viaSymbol: 'RowShape', line: 1, rank: 1 }],
+      },
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('found');
+  });
+
+  it('treats a missing mention count as zero, never as a reference', () => {
+    // No `mentions` map at all — the caller could not supply counts. Claiming
+    // "referenced but unresolvable" would invent evidence.
+    const res = map({ blast: { changedSymbols: [sym('unknownKind', 'gadget')] } });
+
+    expect(res.downstream[0]!.resolution).toBe('unreferenced');
+  });
+
+  it('treats an unrecognised kind as callable', () => {
+    const res = map({
+      blast: { changedSymbols: [sym('widget', 'gadget')] },
+      mentions: new Map([['widget', 2]]),
+    });
+
+    expect(res.downstream[0]!.resolution).toBe('unresolved');
+  });
+});
+
+describe('a capped caller list is partial, never complete', () => {
+  it('is partial when the facade reports a capped symbol', () => {
+    const res = map({
+      blast: {
+        changedSymbols: [{ file: 'a.ts', name: 'busy', kind: 'function' }],
+        callers: [{ file: 'c.ts', symbol: 'x', viaSymbol: 'busy', line: 1, rank: 1 }],
+        cappedSymbols: ['busy'],
+      },
+    });
+
+    expect(res.state).toBe('partial');
+    expect(res.reason).toBe('callers_capped');
+  });
+
+  it('stays ok when nothing was capped', () => {
+    const res = map({
+      blast: {
+        changedSymbols: [{ file: 'a.ts', name: 'busy', kind: 'function' }],
+        cappedSymbols: [],
+      },
+    });
+
+    expect(res.state).toBe('ok');
+  });
+
+  it('lets a partial index outrank the cap in the reason', () => {
+    // A partial index is the broader problem: it affects rows that are not here
+    // at all, not just rows this response shortened.
+    const res = map({
+      blast: {
+        changedSymbols: [{ file: 'a.ts', name: 'busy', kind: 'function' }],
+        cappedSymbols: ['busy'],
+      },
+      indexStatus: 'partial',
+    });
+
+    expect(res.reason).toBe('index_partial');
   });
 });
 

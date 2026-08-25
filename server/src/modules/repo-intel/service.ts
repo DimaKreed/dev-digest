@@ -49,6 +49,7 @@ import {
   DEFAULT_REPO_MAP_TOKEN_BUDGET,
   INDEX_JOB_KIND,
   INDEXER_VERSION,
+  MAX_BLAST_CALLERS_TOTAL,
   MAX_CALLERS_PER_SYMBOL,
   MAX_HUB_FANIN,
   MAX_REVERSE_FANOUT,
@@ -326,6 +327,18 @@ export class RepoIntelService implements RepoIntel {
    * Costs exactly BFS_DEPTH queries plus one facts read, regardless of how many
    * files are involved.
    */
+  /**
+   * Reference counts per name, resolved or not.
+   *
+   * Degrades to an empty map rather than throwing, like every other method here:
+   * a consumer reading no count must fall back to its cautious branch, and an
+   * absent count is not evidence of an absent reference.
+   */
+  async getSymbolMentions(repoId: string, names: string[]): Promise<Map<string, number>> {
+    if (!this.container.config.repoIntelEnabled || names.length === 0) return new Map();
+    return this.repo.getSymbolMentions(repoId, names);
+  }
+
   async getReverseImpact(repoId: string, files: string[]): Promise<ReverseImpactResult> {
     if (!this.container.config.repoIntelEnabled || files.length === 0) {
       return { rows: [], truncatedFrom: [] };
@@ -475,11 +488,42 @@ export class RepoIntelService implements RepoIntel {
       for (const e of f.endpoints) endpoints.add(e);
     }
 
+    // The cap is PER CHANGED SYMBOL, which is what its name has always said.
+    // It used to be `callers.slice(0, 20)` over the FLAT array: on a pull request
+    // touching 130 symbols, 77 real callers across 45 symbols were cut to 20
+    // rows covering 13, and the other 32 symbols rendered as "0 callers" — a
+    // measured-looking zero produced by a budget, not by the code.
+    //
+    // `callers` is already rank-sorted, and a Map preserves insertion order, so
+    // each group keeps that order without a second sort.
+    const byVia = new Map<string, BlastCallerRow[]>();
+    for (const c of callers) {
+      const group = byVia.get(c.viaSymbol);
+      if (group) group.push(c);
+      else byVia.set(c.viaSymbol, [c]);
+    }
+    const capped: BlastCallerRow[] = [];
+    const cappedSymbols: string[] = [];
+    let totalHit = false;
+    for (const [via, group] of byVia) {
+      if (group.length > MAX_CALLERS_PER_SYMBOL) cappedSymbols.push(via);
+      for (const c of group.slice(0, MAX_CALLERS_PER_SYMBOL)) {
+        if (capped.length >= MAX_BLAST_CALLERS_TOTAL) {
+          totalHit = true;
+          break;
+        }
+        capped.push(c);
+      }
+      if (totalHit) break;
+    }
+    if (totalHit) cappedSymbols.push('__total__');
+
     return {
       changedSymbols,
-      callers: callers.slice(0, MAX_CALLERS_PER_SYMBOL),
+      callers: capped,
       impactedEndpoints: [...endpoints],
       factsByFile,
+      ...(cappedSymbols.length > 0 ? { cappedSymbols } : {}),
       degraded: false,
     };
   }

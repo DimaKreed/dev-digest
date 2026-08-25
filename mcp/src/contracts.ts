@@ -206,12 +206,22 @@ export const BlastCallerBrief = z.object({
 });
 export type BlastCallerBrief = z.infer<typeof BlastCallerBrief>;
 
-/** Mirrors `contracts/review-api.ts` → `DownstreamNode`. */
+/**
+ * Mirrors `contracts/review-api.ts` → `DownstreamNode`.
+ *
+ * `resolution` stays a bare string rather than the canonical enum, for the same
+ * reason `state` does below: an unrecognised value must degrade into the
+ * cautious branch, not fail the parse. Absent or unknown is read as
+ * `'unresolved'` — "we could not tell", never "nothing calls this".
+ */
 export const DownstreamImpactBrief = z.object({
   symbol: z.string(),
   callers: z.array(BlastCallerBrief).nullish(),
   endpoints_affected: z.array(z.string()).nullish(),
   crons_affected: z.array(z.string()).nullish(),
+  resolution: z.string().nullish(),
+  /** References the index saw for this name, resolved or not. */
+  mentions: z.number().int().nullish(),
 });
 export type DownstreamImpactBrief = z.infer<typeof DownstreamImpactBrief>;
 

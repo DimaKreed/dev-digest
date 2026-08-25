@@ -97,7 +97,18 @@ function SymbolRow({
 }) {
   const t = useTranslations("blast");
   const [open, setOpen] = React.useState(false);
+
+  // `measured` outranks `resolution`. Over an incomplete index every empty list
+  // is ignorance first, whatever the server managed to say about WHY — the
+  // reasons below are all reasons within a working index.
   const unknown = !measured && node.callers.length === 0;
+  const label = unknown
+    ? t("callerUnknown")
+    : node.callers.length > 0
+      ? t("callerCount", { count: node.callers.length })
+      : node.resolution === "unreferenced"
+        ? t("resolution.unreferenced")
+        : t("resolution.unresolved", { count: node.mentions });
 
   return (
     <div style={s.symbolRow}>
@@ -112,9 +123,7 @@ function SymbolRow({
           style={{ transform: open ? "rotate(90deg)" : undefined }}
         />
         <span style={s.symbolName}>{node.symbol}()</span>
-        <span style={s.symbolCount}>
-          {unknown ? t("callerUnknown") : t("callerCount", { count: node.callers.length })}
-        </span>
+        <span style={s.symbolCount}>{label}</span>
       </button>
 
       {open && (
@@ -130,7 +139,11 @@ function SymbolRow({
             </div>
           ) : (
             <span style={{ ...s.empty, paddingInlineStart: 20 }}>
-              {unknown ? t("symbol.unknownCallers") : t("symbol.noCallers")}
+              {unknown
+                ? t("symbol.unknownCallers")
+                : node.resolution === "unreferenced"
+                  ? t("symbol.unreferencedBody")
+                  : t("symbol.unresolvedBody", { count: node.mentions })}
             </span>
           )}
 

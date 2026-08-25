@@ -56,6 +56,14 @@ export const BFS_DEPTH = 2;
  */
 export const MAX_REVERSE_FANOUT = 200;
 /**
+ * [T3] Total caller rows the blast read may return once the per-symbol cap is in
+ * play. `MAX_CALLERS_PER_SYMBOL` alone is unbounded across a large pull request —
+ * 130 changed symbols could ask for 2600 rows — and this response is read by a
+ * browser and by an MCP client, not only by a prompt. Hitting it is reported, so
+ * a truncated list is never presented as a complete one.
+ */
+export const MAX_BLAST_CALLERS_TOTAL = 400;
+/**
  * [T3] Reverse fan-in above which a file discovered mid-walk is treated as a
  * CONDUIT and not expanded through.
  *
@@ -63,9 +71,12 @@ export const MAX_REVERSE_FANOUT = 200;
  * `schema.ts`, a barrel, the DI root. Arriving at one says almost nothing about
  * the change that started the walk, because almost everything arrives there;
  * continuing outward then attributes that hub's neighbours to the change too.
- * Measured on this repo's own index: reverse fan-in is 1 at p50 and 7 at p95,
- * while `app.ts` sits at 12 and is imported by eleven integration tests, so a
- * walk through it hands every endpoint those tests exercise to any server file.
+ * Measured on this repo's own index: reverse fan-in is 1 at p50, 5 at p90 and 9
+ * at p95 (7 at p95 before type-only imports joined the graph, which is why this
+ * number is a judgement about where shared infrastructure begins rather than a
+ * percentile), while `app.ts` sits at 12 and is imported by eleven integration
+ * tests — so a walk through it hands every endpoint those tests exercise to any
+ * server file. At 8 roughly the top 5% of files count as hubs.
  *
  * The hub itself is kept — it WAS reached, at its own depth, and its own facts
  * are still its own. Only the step past it is refused. Seeds are exempt: they

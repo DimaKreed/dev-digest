@@ -41,11 +41,21 @@ export class BlastService {
     // that direct attribution misses. Depends on `blast`, so it cannot join the
     // batch above.
     const callerFiles = [...new Set(blast.callers.map((c) => c.file))];
-    const impact = await this.deps.intel.getReverseImpact(pull.repoId, callerFiles);
+    // Both depend on `blast`, and neither depends on the other.
+    const [impact, mentions] = await Promise.all([
+      this.deps.intel.getReverseImpact(pull.repoId, callerFiles),
+      // Reference counts for every changed symbol, so a row with no callers can
+      // say WHY rather than printing a zero that reads as a measurement.
+      this.deps.intel.getSymbolMentions(
+        pull.repoId,
+        blast.changedSymbols.map((sym) => sym.name),
+      ),
+    ]);
 
     return toBlastResponse({
       blast,
       impact,
+      mentions,
       indexStatus: indexState.status,
       indexEdges: indexState.edgesWritten,
       indexFiles: indexState.filesIndexed,

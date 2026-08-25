@@ -28,6 +28,41 @@ export interface GetBlastRadiusInput {
 /** `ok` is asserted only when the server said so in as many words. */
 export type IndexHealth = 'ok' | 'partial' | 'degraded';
 
+/**
+ * Why a symbol has no callers, counted across the whole pull request.
+ *
+ * An empty answer used to be reported as one fact — "nothing calls the changed
+ * code" — when it is four, and only one of them is about the change. Measured on
+ * a real 130-symbol pull request: 31 rows were types that can never have a
+ * caller and 11 were names the index saw but could not tie to a declaration.
+ * Reporting that as a measured absence is the single worst thing this tool can
+ * say, because a model reads it and stops looking.
+ */
+export interface ResolutionTally {
+  found: number;
+  /** Interfaces and type aliases — never invoked, so never callable. */
+  notCallable: number;
+  /** The index has no reference to the name at all: new, or unused. */
+  unreferenced: number;
+  /** Referenced, but no reference could be tied to this declaration. */
+  unresolved: number;
+}
+
+/**
+ * An absent or unrecognised `resolution` reads as `unresolved` — "could not
+ * tell" — and never as a measured absence. Same reasoning as `readIndexHealth`:
+ * the cautious branch is the default, not the optimistic one.
+ */
+export function readResolution(
+  value: string | null | undefined,
+  callers: number,
+): keyof ResolutionTally {
+  if (callers > 0) return 'found';
+  if (value === 'not_callable') return 'notCallable';
+  if (value === 'unreferenced') return 'unreferenced';
+  return 'unresolved';
+}
+
 /** One affected symbol, with its callers already capped. */
 export interface BlastImpact {
   symbol: string;
@@ -46,6 +81,8 @@ export interface GetBlastRadiusOutput {
   returned: number;
   total: number;
   truncated: boolean;
+  /** Why the symbols WITHOUT callers have none. Never all one reason. */
+  tally: ResolutionTally;
   /** Callers across ALL impacts, before either cap. */
   totalCallers: number;
   endpoints: string[];
@@ -106,6 +143,10 @@ export async function getBlastRadius(
   const downstream = blast.downstream ?? [];
 
   const impacts = downstream.map(impactOf);
+  const tally: ResolutionTally = { found: 0, notCallable: 0, unreferenced: 0, unresolved: 0 };
+  for (const row of downstream) {
+    tally[readResolution(row.resolution, (row.callers ?? []).length)] += 1;
+  }
   const withCallers = impacts.filter((i) => i.callerCount > 0);
   const totalCallers = impacts.reduce((n, i) => n + i.callerCount, 0);
 
@@ -141,6 +182,7 @@ export async function getBlastRadius(
     returned: shown.length,
     total: ranked.length,
     truncated: shown.length < ranked.length,
+    tally,
     totalCallers,
     endpoints,
     crons,

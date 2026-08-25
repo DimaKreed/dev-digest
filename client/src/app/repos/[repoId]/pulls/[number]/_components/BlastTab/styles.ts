@@ -191,4 +191,28 @@ export const s = {
     lineHeight: 1.5,
     color: "var(--text-secondary)",
   } satisfies CSSProperties,
+
+  // --- types and interfaces (their own section; `priorSection` layout) -----
+  uncallableList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    paddingInlineStart: 14,
+    borderInlineStart: "2px solid var(--border)",
+  } satisfies CSSProperties,
+  uncallableRow: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 8,
+    flexWrap: "wrap",
+    fontSize: 12.5,
+  } satisfies CSSProperties,
+  uncallableName: {
+    fontFamily: "var(--font-mono, monospace)",
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  uncallableFile: {
+    fontFamily: "var(--font-mono, monospace)",
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
 } as const;

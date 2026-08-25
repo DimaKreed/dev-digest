@@ -11,7 +11,14 @@
   },
   "callerCount": "{count} callers",
   "callerUnknown": "callers unknown",
-  "uncallable": "{count} changed type(s) and interface(s) are not listed — the index resolves calls, and a type is never called.",
+  "resolution": {
+    "unreferenced": "not referenced",
+    "unresolved": "{count} mention(s), unresolved"
+  },
+  "uncallable": {
+    "title": "Types and interfaces",
+    "body": "The index resolves calls, and a type is annotated rather than called — so \"no callers\" says nothing about these. They are listed here because they did change."
+  },
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
   "graph": {
     "empty": "No downstream callers to graph.",
@@ -37,7 +44,9 @@
   },
   "symbol": {
     "noCallers": "No callers found for this symbol.",
-    "unknownCallers": "The index could not resolve callers for this symbol. Absent here means unknown, not none."
+    "unknownCallers": "The index could not resolve callers for this symbol. Absent here means unknown, not none.",
+    "unreferencedBody": "Nothing in the index mentions this name — it is new, or nothing uses it.",
+    "unresolvedBody": "Mentioned {count} time(s), but no mention could be tied to this declaration. That happens when the calling file receives this through an injected port and so does not import it — the import graph cannot prove a link that may well exist. Worth checking by hand."
   },
   "openInGithub": "View on GitHub",
   "legend": {

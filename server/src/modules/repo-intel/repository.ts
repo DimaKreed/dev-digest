@@ -397,6 +397,21 @@ export class RepoIntelRepository {
    * candidate is unique. 0 or >1 candidates leave `decl_file = NULL` (which is
    * the honest "unresolved" signal, never a nearest-name guess).
    *
+   * ONE extra hop is allowed through a re-export barrel. `page.tsx` importing
+   * `_components/PrDetailHeader` resolves to that folder's `index.ts`, whose only
+   * content is `export { PrDetailHeader } from './PrDetailHeader'` — the symbol is
+   * declared one file further on, so a single-hop rule finds no candidate at all.
+   *
+   * A barrel is identified FROM THE DATA rather than from its name: a file the
+   * indexer sees declaring nothing cannot be where the symbol lives, so looking
+   * through its own imports is the only way the reference can resolve. This is an
+   * APPROXIMATION — 185 of this repository's 453 indexed files declare nothing,
+   * which includes configs and files the parser produced nothing for, not barrels
+   * alone. It stays safe because the hop is exactly one step, only through such
+   * files, and the uniqueness rule below still applies to the union: measured on
+   * this repository it took resolved references from 1156 to 1308 while the
+   * ambiguous count stayed at 4.
+   *
    * `reset: true` (incremental) first clears every decl_file so a changed
    * decl-file can't leave a stale resolution behind; full index inserts rows
    * with NULL decl_file already, so reset is unnecessary there.
@@ -411,7 +426,7 @@ export class RepoIntelRepository {
       );
     }
     await this.db.execute(sql`
-      WITH cand AS (
+      WITH direct AS (
         SELECT r.id AS ref_id, e.to_file AS decl
         FROM "references" r
         JOIN file_edges e ON e.repo_id = r.repo_id AND e.from_file = r.from_path
@@ -419,6 +434,27 @@ export class RepoIntelRepository {
                       AND s.name = r.to_symbol AND s.exported = true
         WHERE r.repo_id = ${repoId}
         GROUP BY r.id, e.to_file
+      ),
+      via_barrel AS (
+        SELECT r.id AS ref_id, e2.to_file AS decl
+        FROM "references" r
+        JOIN file_edges e1 ON e1.repo_id = r.repo_id AND e1.from_file = r.from_path
+        JOIN file_edges e2 ON e2.repo_id = r.repo_id AND e2.from_file = e1.to_file
+        JOIN symbols s ON s.repo_id = r.repo_id AND s.path = e2.to_file
+                      AND s.name = r.to_symbol AND s.exported = true
+        WHERE r.repo_id = ${repoId}
+          AND NOT EXISTS (
+            SELECT 1 FROM symbols b
+            WHERE b.repo_id = r.repo_id AND b.path = e1.to_file
+          )
+        GROUP BY r.id, e2.to_file
+      ),
+      -- UNION, never UNION ALL: a candidate both branches find must count once,
+      -- or the uniqueness test below would reject its own single answer.
+      cand AS (
+        SELECT ref_id, decl FROM direct
+        UNION
+        SELECT ref_id, decl FROM via_barrel
       ),
       uniq AS (
         SELECT ref_id FROM cand GROUP BY ref_id HAVING count(*) = 1
@@ -460,6 +496,28 @@ export class RepoIntelRepository {
       .select({ fromFile: t.fileEdges.fromFile, toFile: t.fileEdges.toFile })
       .from(t.fileEdges)
       .where(and(eq(t.fileEdges.repoId, repoId), inArray(t.fileEdges.toFile, files)));
+  }
+
+  /**
+   * How many times the index sees each of `names` referenced ANYWHERE, resolved
+   * or not.
+   *
+   * This is what separates "nothing in this repository mentions this name" from
+   * "it is mentioned, but no mention could be tied to this declaration". Both
+   * render as an empty caller list, and only the first one is a finding — the
+   * second is the import graph admitting it cannot prove a link that a reviewer
+   * may still need to check by hand.
+   *
+   * Served by the `to_symbol` btree index; one grouped query for the whole set.
+   */
+  async getSymbolMentions(repoId: string, names: string[]): Promise<Map<string, number>> {
+    if (names.length === 0) return new Map();
+    const rows = await this.db
+      .select({ name: t.references.toSymbol, count: sql<number>`count(*)::int` })
+      .from(t.references)
+      .where(and(eq(t.references.repoId, repoId), inArray(t.references.toSymbol, names)))
+      .groupBy(t.references.toSymbol);
+    return new Map(rows.map((r) => [r.name, r.count]));
   }
 
   /** `{path, percentile}` for the given paths (smart-diff / run-executor). */

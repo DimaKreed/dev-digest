@@ -93,12 +93,27 @@ Three empty results are kept apart, and only one of them is a success:
 |---|---|---|
 | `not_indexed` | The index could not answer. The emptiness carries no information. | `isError: true` |
 | `no_symbols` | The diff changed no analysable code (config, docs, data). | success |
-| `no_callers` | A healthy index found the symbols and nothing calls them. | success |
+| `no_callers` | A healthy index found the symbols and resolved no callers. | success |
 
-Only `no_callers` is allowed to say "the index covered every changed file, so this is a
-measured result" — which is why a *partial* index with zero callers reports `not_indexed`
-rather than `no_callers`. When the index is incomplete but did find something, every answer
-is prefixed with a warning that the counts below it are a lower bound.
+A *partial* index with zero callers reports `not_indexed` rather than `no_callers`, because
+the emptiness carries no information there. When the index is incomplete but did find
+something, every answer is prefixed with a warning that the counts below it are a lower bound.
+
+`no_callers` is a success, but it is **not** a single fact, and the text says which. Each
+changed symbol carries a `resolution`, and only one of its values is a measurement:
+
+| `resolution` | Means | Is the silence a measurement? |
+|---|---|---|
+| `found` | Callers resolved. | n/a — the answer is the list |
+| `unreferenced` | No reference to the name anywhere in the index. | **yes** |
+| `unresolved` | Referenced, but no reference could be tied to the changed declaration — typically a call through an injected port the calling file does not import. | no: those callers exist and are merely unprovable from the import graph |
+| `not_callable` | An interface or type alias. Annotated, never invoked. | no: a caller was never possible |
+
+An absent or unrecognised `resolution` is read as `unresolved`, never as `unreferenced` —
+the same "degrade into the cautious branch" rule the tolerant schemas follow everywhere
+else. On a real 130-symbol pull request 42 of the 63 caller-less symbols fell outside
+`unreferenced`, so collapsing all four into "nothing calls the changed code" was wrong two
+times out of three.
 
 ## How the blocking run works
 
