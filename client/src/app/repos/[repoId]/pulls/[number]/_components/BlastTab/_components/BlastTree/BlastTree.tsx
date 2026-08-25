@@ -77,9 +77,27 @@ function CallerLink({
   return <span className="mono">{label}</span>;
 }
 
-function SymbolRow({ node, ctx }: { node: DownstreamNode; ctx: BlastLinkContext }) {
+/**
+ * One collapsible symbol row.
+ *
+ * `measured` is the whole reason this prop exists. Over a complete index a zero
+ * is a finding: nothing calls this code. Over a partial one it is ignorance
+ * wearing a number — the index resolved 8% of this repository's references at
+ * one point, so most zeroes meant "could not tell", and printing "0 callers"
+ * stated the opposite of what was known.
+ */
+function SymbolRow({
+  node,
+  ctx,
+  measured,
+}: {
+  node: DownstreamNode;
+  ctx: BlastLinkContext;
+  measured: boolean;
+}) {
   const t = useTranslations("blast");
   const [open, setOpen] = React.useState(false);
+  const unknown = !measured && node.callers.length === 0;
 
   return (
     <div style={s.symbolRow}>
@@ -95,7 +113,7 @@ function SymbolRow({ node, ctx }: { node: DownstreamNode; ctx: BlastLinkContext 
         />
         <span style={s.symbolName}>{node.symbol}()</span>
         <span style={s.symbolCount}>
-          {t("callerCount", { count: node.callers.length })}
+          {unknown ? t("callerUnknown") : t("callerCount", { count: node.callers.length })}
         </span>
       </button>
 
@@ -112,7 +130,7 @@ function SymbolRow({ node, ctx }: { node: DownstreamNode; ctx: BlastLinkContext 
             </div>
           ) : (
             <span style={{ ...s.empty, paddingInlineStart: 20 }}>
-              {t("symbol.noCallers")}
+              {unknown ? t("symbol.unknownCallers") : t("symbol.noCallers")}
             </span>
           )}
 
@@ -139,9 +157,12 @@ function SymbolRow({ node, ctx }: { node: DownstreamNode; ctx: BlastLinkContext 
 export function BlastTree({
   downstream,
   ctx,
+  measured,
 }: {
   downstream: DownstreamNode[];
   ctx: BlastLinkContext;
+  /** True only over a complete index — decides whether 0 means 0 or unknown. */
+  measured: boolean;
 }) {
   return (
     <div>
@@ -151,7 +172,7 @@ export function BlastTree({
           rows share a React identity and SymbolRow holds its own collapse state,
           so expanding one would toggle the other. */}
       {downstream.map((node, i) => (
-        <SymbolRow key={`${node.symbol}#${i}`} node={node} ctx={ctx} />
+        <SymbolRow key={`${node.symbol}#${i}`} node={node} ctx={ctx} measured={measured} />
       ))}
     </div>
   );

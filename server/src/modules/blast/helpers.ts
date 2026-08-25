@@ -260,6 +260,19 @@ export function toBlastResponse(input: {
     };
   });
 
+  // Rows carrying an answer first. `downstream` follows the declaration order
+  // the index happened to return, so on a large pull request the handful of
+  // symbols that actually have callers sit buried among the many that do not —
+  // a reviewer scrolls a wall of zeroes and concludes the feature found nothing.
+  // Ordering is a presentation concern of this response, which is why it happens
+  // here and not in the facade: the tree, the graph and the MCP tool all read
+  // this array and all three want the informative rows first.
+  //
+  // Tiebreak by name so the order is total and the same input always renders
+  // identically — `Array.prototype.sort` is stable, but the array it is handed
+  // is only as stable as the database's row order.
+  downstream.sort((a, b) => b.callers.length - a.callers.length || a.symbol.localeCompare(b.symbol));
+
   const { state, reason } = deriveState(
     indexStatus,
     blast,

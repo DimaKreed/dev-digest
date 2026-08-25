@@ -307,6 +307,168 @@ describe("prior PRs", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// A zero is a finding only over a complete index. On a real 130-symbol pull
+// request the index had resolved 8% of the repository's references, so almost
+// every zero meant "could not tell" — and the row printed "0 callers".
+// ---------------------------------------------------------------------------
+
+describe("a caller count says only what the index can support", () => {
+  // A name of its own: TWO_CALLERS is also `rateLimit`, and a row query that
+  // matches both is not testing which row said what.
+  const quiet: BlastRadiusResponse["downstream"] = [
+    { symbol: "untouched", callers: [], endpoints_affected: [], crons_affected: [] },
+  ];
+
+  it("prints a zero over a complete index", () => {
+    // `state: "ok"` — nothing calls this, and that IS the answer.
+    blastState.data = response({ downstream: [...quiet, ...TWO_CALLERS], state: "ok" });
+    renderTab();
+
+    expect(screen.getByText("0 callers")).toBeInTheDocument();
+    expect(screen.queryByText("callers unknown")).not.toBeInTheDocument();
+  });
+
+  it("says unknown instead of zero over a partial index", () => {
+    blastState.data = response({
+      downstream: [...quiet, ...TWO_CALLERS],
+      state: "partial",
+      reason: "index_partial",
+    });
+    renderTab();
+
+    expect(screen.getByText("callers unknown")).toBeInTheDocument();
+    expect(screen.queryByText("0 callers")).not.toBeInTheDocument();
+  });
+
+  it("leaves a non-zero count alone over a partial index", () => {
+    // Two callers were actually found; incompleteness makes that a lower bound,
+    // not an unknown, and the banner already says so.
+    blastState.data = response({ downstream: TWO_CALLERS, state: "partial" });
+    renderTab();
+
+    expect(screen.getByText("2 callers")).toBeInTheDocument();
+    expect(screen.queryByText("callers unknown")).not.toBeInTheDocument();
+  });
+
+  it("explains the unknown inside the expanded row too", () => {
+    blastState.data = response({
+      downstream: [...quiet, ...TWO_CALLERS],
+      state: "degraded",
+      reason: "no_import_graph",
+    });
+    renderTab();
+
+    fireEvent.click(screen.getByRole("button", { name: /untouched/ }));
+    expect(screen.getByText(/Absent here means unknown, not none/)).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 31 of 130 rows on that pull request were interfaces. The index resolves
+// invocations, so their zero was never a measurement of anything.
+// ---------------------------------------------------------------------------
+
+describe("types are set aside, not listed", () => {
+  const mixed = (): BlastRadiusResponse =>
+    response({
+      changed_symbols: [
+        { name: "rateLimit", file: "a.ts", kind: "function" },
+        { name: "RowShape", file: "a.ts", kind: "interface" },
+        { name: "Alias", file: "a.ts", kind: "type" },
+      ],
+      downstream: [
+        ...TWO_CALLERS,
+        { symbol: "RowShape", callers: [], endpoints_affected: [], crons_affected: [] },
+        { symbol: "Alias", callers: [], endpoints_affected: [], crons_affected: [] },
+      ],
+    });
+
+  it("hides the type rows and says how many", () => {
+    blastState.data = mixed();
+    renderTab();
+
+    expect(screen.queryByText("RowShape()")).not.toBeInTheDocument();
+    expect(screen.queryByText("Alias()")).not.toBeInTheDocument();
+    expect(screen.getByText(/2 changed type\(s\) and interface\(s\) are not listed/)).toBeInTheDocument();
+  });
+
+  it("keeps the symbols count honest — set aside is not dropped", () => {
+    // The header still reports all three changed symbols. Hiding a row must not
+    // quietly shrink what the tab claims to have looked at.
+    blastState.data = mixed();
+    renderTab();
+
+    expect(screen.getByText("3").parentElement).toHaveTextContent("symbols");
+  });
+
+  it("shows a type row anyway when callers were actually found for it", () => {
+    // A measured caller outranks a kind label claiming there cannot be one — an
+    // interface with a resolved call site is a bug in the extractor's kind, and
+    // hiding the evidence is the wrong way to react to it.
+    blastState.data = response({
+      changed_symbols: [{ name: "RowShape", file: "a.ts", kind: "interface" }],
+      downstream: [
+        {
+          symbol: "RowShape",
+          callers: [
+            {
+              name: "use",
+              file: "b.ts",
+              line: 7,
+              endpoints_affected: [],
+              crons_affected: [],
+            },
+          ],
+          endpoints_affected: [],
+          crons_affected: [],
+        },
+      ],
+    });
+    renderTab();
+
+    expect(screen.getByText("RowShape()")).toBeInTheDocument();
+  });
+
+  it("shows an unrecognised kind rather than hiding it", () => {
+    // TWO_CALLERS is here only so the tree renders at all: with nothing calling
+    // anything the tab is an empty state, and there are no rows to inspect.
+    blastState.data = response({
+      changed_symbols: [
+        { name: "rateLimit", file: "a.ts", kind: "function" },
+        { name: "widget", file: "a.ts", kind: "gadget" },
+      ],
+      downstream: [
+        ...TWO_CALLERS,
+        { symbol: "widget", callers: [], endpoints_affected: [], crons_affected: [] },
+      ],
+    });
+    renderTab();
+
+    expect(screen.getByText("widget()")).toBeInTheDocument();
+  });
+});
+
+describe("an empty result over an incomplete index is not a finding", () => {
+  it("does not claim 'no downstream impact' when the index is only partial", () => {
+    // `partial` is not `degraded`, so this branch used to fall through to the
+    // neutral copy — the same lie the branch order exists to prevent, one notch
+    // quieter. Nothing was found AND nothing could be trusted to be absent.
+    blastState.data = response({ downstream: [], state: "partial", reason: "index_partial" });
+    renderTab();
+
+    expect(screen.queryByText("No downstream impact found")).not.toBeInTheDocument();
+    expect(screen.getByText(/the index is incomplete/)).toBeInTheDocument();
+  });
+
+  it("still claims it over a complete index", () => {
+    blastState.data = response({ downstream: [], state: "ok" });
+    renderTab();
+
+    expect(screen.getByText("No downstream impact found")).toBeInTheDocument();
+  });
+});
+
 describe("loading and failure", () => {
   it("offers a retry when the request failed", () => {
     blastState = { data: undefined, isLoading: false, isError: true, refetch };

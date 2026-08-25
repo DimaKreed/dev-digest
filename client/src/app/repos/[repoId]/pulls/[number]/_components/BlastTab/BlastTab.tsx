@@ -14,6 +14,7 @@ import { useBlastRadius } from "@/lib/hooks/blast";
 import { BlastGraph } from "./_components/BlastGraph";
 import { BlastTree, type BlastLinkContext } from "./_components/BlastTree";
 import { PriorPrs } from "./_components/PriorPrs";
+import { partitionByCallability } from "./helpers";
 import { s } from "./styles";
 
 /** The two renderings of the same data. A closed set, so it is a union. */
@@ -80,6 +81,15 @@ export function BlastTab({
   const crons = new Set(data.downstream.flatMap((d) => d.crons_affected));
   const callerCount = data.downstream.reduce((n, d) => n + d.callers.length, 0);
 
+  // Types are set aside rather than listed: the index resolves invocations, so a
+  // caller count on an interface is a question that does not apply. The count is
+  // reported below the tree — set aside is not the same as dropped.
+  const { callable, uncallable } = partitionByCallability(data.downstream, data.changed_symbols);
+
+  // Over anything short of a complete index a zero is ignorance, not a finding,
+  // and the rows say so instead of printing a number they cannot support.
+  const measured = data.state === "ok";
+
   const ctx: BlastLinkContext = { prFilePaths, repoFullName, headSha, onOpenFile };
 
   return (
@@ -118,20 +128,28 @@ export function BlastTab({
 
       {hasContent ? (
         view === "graph" ? (
-          <BlastGraph downstream={data.downstream} />
+          <BlastGraph downstream={callable} />
         ) : (
-          <BlastTree downstream={data.downstream} ctx={ctx} />
+          <BlastTree downstream={callable} ctx={ctx} measured={measured} />
         )
       ) : (
+        // Keyed on `measured`, not on `degraded`. `partial` is not degraded, so
+        // this used to fall through to the neutral copy and report a measured
+        // "no downstream impact" over an index that had admitted, one element
+        // higher up the page, that it could not see everything.
         <EmptyState
           icon="Target"
-          title={degraded ? t("empty.degradedTitle") : t("empty.title")}
+          title={measured ? t("empty.title") : t("empty.degradedTitle")}
           body={
-            degraded
-              ? t("empty.degradedBody")
-              : t("noDownstream", { count: data.changed_symbols.length })
+            measured
+              ? t("noDownstream", { count: data.changed_symbols.length })
+              : t("empty.degradedBody")
           }
         />
+      )}
+
+      {uncallable > 0 && view === "tree" && (
+        <span style={s.meta}>{t("uncallable", { count: uncallable })}</span>
       )}
 
       <PriorPrs prId={prId} items={data.prior_prs} />

@@ -10,6 +10,8 @@
     "graph": "graph"
   },
   "callerCount": "{count} callers",
+  "callerUnknown": "callers unknown",
+  "uncallable": "{count} changed type(s) and interface(s) are not listed — the index resolves calls, and a type is never called.",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
   "graph": {
     "empty": "No downstream callers to graph.",
@@ -34,7 +36,8 @@
     "body": "The blast radius for this pull request could not be computed."
   },
   "symbol": {
-    "noCallers": "No callers found for this symbol."
+    "noCallers": "No callers found for this symbol.",
+    "unknownCallers": "The index could not resolve callers for this symbol. Absent here means unknown, not none."
   },
   "openInGithub": "View on GitHub",
   "legend": {

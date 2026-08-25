@@ -134,6 +134,65 @@ describe('what belongs in downstream', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Row order. On a 130-symbol pull request only 13 symbols had callers, and they
+// were scattered through the list — the answer was present and invisible.
+// ---------------------------------------------------------------------------
+
+describe('rows carrying an answer come first', () => {
+  it('sorts by caller count descending', () => {
+    const res = map({
+      blast: {
+        changedSymbols: [
+          { file: 'a.ts', name: 'quiet', kind: 'function' },
+          { file: 'a.ts', name: 'busy', kind: 'function' },
+          { file: 'a.ts', name: 'some', kind: 'function' },
+        ],
+        callers: [
+          { file: 'c1.ts', symbol: 'x', viaSymbol: 'busy', line: 1, rank: 3 },
+          { file: 'c2.ts', symbol: 'y', viaSymbol: 'busy', line: 2, rank: 2 },
+          { file: 'c3.ts', symbol: 'z', viaSymbol: 'some', line: 3, rank: 1 },
+        ],
+      },
+    });
+
+    expect(res.downstream.map((d) => d.symbol)).toEqual(['busy', 'some', 'quiet']);
+  });
+
+  it('breaks ties by name, so the same input always renders identically', () => {
+    // The declaration order handed in is deliberately reversed relative to the
+    // alphabet: without the tiebreak this would echo the input order, which is
+    // whatever order the database returned.
+    const res = map({
+      blast: {
+        changedSymbols: [
+          { file: 'a.ts', name: 'zeta', kind: 'function' },
+          { file: 'a.ts', name: 'beta', kind: 'function' },
+          { file: 'a.ts', name: 'alpha', kind: 'function' },
+        ],
+      },
+    });
+
+    expect(res.downstream.map((d) => d.symbol)).toEqual(['alpha', 'beta', 'zeta']);
+  });
+
+  it('does not reorder the callers inside a row', () => {
+    // Callers arrive rank-sorted from the facade and must stay that way — the
+    // row sort is over rows only.
+    const res = map({
+      blast: {
+        changedSymbols: [{ file: 'a.ts', name: 'busy', kind: 'function' }],
+        callers: [
+          { file: 'high.ts', symbol: 'x', viaSymbol: 'busy', line: 1, rank: 9 },
+          { file: 'low.ts', symbol: 'y', viaSymbol: 'busy', line: 2, rank: 1 },
+        ],
+      },
+    });
+
+    expect(res.downstream[0]!.callers.map((c) => c.file)).toEqual(['high.ts', 'low.ts']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The two-level reverse walk. This is the before/after of the shallow
 // attribution the facade ships on its own.
 // ---------------------------------------------------------------------------
