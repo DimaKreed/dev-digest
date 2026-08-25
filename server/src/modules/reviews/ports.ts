@@ -46,3 +46,19 @@ export interface StoredIntent {
 
 /** What `upsertIntent` writes. `created_at` is set by the column default. */
 export type IntentUpsert = Omit<StoredIntent, 'created_at'>;
+
+/**
+ * A merged PR that touched some of the same files as the PR under review.
+ *
+ * `mergedAt` is `pull_requests.updated_at`: there is no merge timestamp column,
+ * and `status = 'merged'` is the only merge signal the import writes. Nullable
+ * because that column is.
+ */
+export interface PriorPrRow {
+  number: number;
+  title: string;
+  author: string;
+  mergedAt: Date | null;
+  /** The subset of the queried paths this PR also touched. */
+  filesOverlap: string[];
+}

@@ -126,6 +126,9 @@ export function PrDetailHeader({
           { key: "overview", label: "Overview", icon: "FileText" },
           { key: "findings", label: "Agent runs", icon: "AlertOctagon", count: findingsCount || undefined },
           { key: "diff", label: "Files changed", icon: "Code", count: pr.files_count },
+          // No count: it would need a page-level blast fetch on every PR open,
+          // for a tab nobody has asked for yet.
+          { key: "blast", label: "Blast radius", icon: "Target" },
         ]}
       />
     </div>

@@ -10,9 +10,44 @@
     "graph": "graph"
   },
   "callerCount": "{count} callers",
+  "callerUnknown": "callers unknown",
+  "uncallable": "{count} changed type(s) and interface(s) are not listed — the index resolves calls, and a type is never called.",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
   "graph": {
     "empty": "No downstream callers to graph.",
     "ariaLabel": "Blast radius graph"
+  },
+  "empty": {
+    "title": "No downstream impact found",
+    "degradedTitle": "No callers found — but the index is incomplete",
+    "degradedBody": "The code index could not be read in full, so an empty result here does not mean this change is contained. Re-index the repository and check again."
+  },
+  "partial": {
+    "title": "This list may be incomplete",
+    "body": "Some files could not be indexed, so callers in them are missing from this list. Treat these counts as a lower bound."
+  },
+  "degraded": {
+    "title": "The code index is stale or unavailable",
+    "body": "Do not read this as a complete impact list. Re-index the repository from its Project Context page, then reopen this tab."
+  },
+  "reason": "Reason: {reason}",
+  "error": {
+    "title": "Couldn't load the blast radius",
+    "body": "The blast radius for this pull request could not be computed."
+  },
+  "symbol": {
+    "noCallers": "No callers found for this symbol.",
+    "unknownCallers": "The index could not resolve callers for this symbol. Absent here means unknown, not none."
+  },
+  "openInGithub": "View on GitHub",
+  "legend": {
+    "symbol": "changed symbol",
+    "callers": "callers",
+    "endpoints": "endpoints affected"
+  },
+  "priorPrs": {
+    "title": "Prior PRs touching these files",
+    "empty": "No merged pull requests have touched these files.",
+    "notesFailed": "Notes could not be generated."
   }
 }

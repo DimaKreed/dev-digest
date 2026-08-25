@@ -47,6 +47,25 @@ repository rather than importing the settings helper: read the `settings` row, `
 `src/modules/conventions/service.ts:349` — the duplication is deliberate and commented as such.
 _2026-08-04_
 
+### `no-cross-module` fires on a sibling module's *constant* and on its *helper* alike — budget one probe per new module, not one per import
+**Symptom:** the entry above records this for `modules/settings/feature-models.ts`. It is not
+specific to that file: a new `modules/blast` tripped
+`error no-cross-module: src/modules/blast/routes.ts → src/modules/settings/feature-models.ts`,
+and a new `modules/diff-review` then tripped
+`error no-cross-module: src/modules/diff-review/service.ts → src/modules/reviews/constants.ts`
+— a one-line `export const REVIEW_STRATEGY = 'single-pass'`. Two different modules, two
+different sibling files, same rule, in one session.
+**Rule:** assume every reach into `modules/<other>/` fails, including a bare constant and
+including a type-only import, and plan the duplication up front. The three legal shapes are:
+read the underlying table through this module's own port (what `blast` does for
+`feature_models` via `reviewRepo.settingValue`), restate the constant locally with a comment
+naming the file it must stay equal to (what `diff-review` does for the strategy), or restate
+the row shape in `ports.ts`. Run `pnpm arch` immediately after writing `ports.ts` and
+`routes.ts`, before the rest of the slice — the violation is cheap to fix then and expensive
+once the service is typed against the import.
+`src/modules/diff-review/service.ts` · `src/modules/blast/notes-service.ts`
+_2026-08-14_
+
 ### `server/` now has its own first `db.transaction()`, so the onion skill's "expect 0 today" probe is stale
 **Symptom:** `.claude/skills/onion-architecture/SKILL.md` states "There are currently **zero**
 `.transaction(` calls in `server/`" and its H9 grep probe reads `rg -n '\.transaction\(' src` —

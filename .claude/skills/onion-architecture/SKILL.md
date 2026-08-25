@@ -6,7 +6,16 @@ argument-hint: "[optional: module name, or \"audit\" to review the current diff]
 
 # Onion architecture (backend)
 
-Applies to `server/` and `reviewer-core/`. Two modes:
+Applies to `server/`, `reviewer-core/` and `mcp/`. Two modes:
+
+`mcp/` is in scope for the **rules** but not for the mechanical check: `pnpm arch` runs
+`depcruise src` from `server/` and `.dependency-cruiser.cjs` is scoped to `server/src`, so it
+never sees that package. Its ring boundaries are held by the grep probes in `mcp/README.md`
+instead, and its ring map lives in `mcp/CLAUDE.md`. Two readings settled there and worth
+carrying: an MCP SDK is transport framework (rings 4–5, as Fastify is here), while a raw
+`fetch` is a true adapter; and C2/C3/H8/H9/M12 simply do not apply to a package with no
+database.
+
 
 - **Design** — before writing backend code, place each new file in a ring and obey the rule
   catalog. Read this first; it overrides habit.

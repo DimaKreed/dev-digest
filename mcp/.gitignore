@@ -1,0 +1,7 @@
+node_modules/
+dist/
+# This package is run as source through tsx; guard against stray tsc output
+# shadowing the .ts sources.
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts

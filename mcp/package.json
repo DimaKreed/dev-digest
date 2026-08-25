@@ -1,0 +1,26 @@
+{
+  "name": "@devdigest/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DevDigest MCP server — five tools over the local DevDigest HTTP API, spoken on stdio, plus the `devdigest review` pre-push CLI. A client of that API: no Postgres, no Drizzle, no server/src import.",
+  "bin": {
+    "devdigest": "./bin/devdigest.mjs"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "start": "tsx src/server.ts",
+    "review": "tsx src/cli.ts review"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

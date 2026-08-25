@@ -20,6 +20,20 @@ names and formatting the lesson expects. Two traps: the removals span BOTH `vend
 and one of them dropped a DB column, so restoring needs a NEW migration, not a revert.
 _2026-07-30_
 
+### Running a review tool on its own uncommitted diff finds what the test suite structurally cannot
+**Symptom:** `devdigest review` was green on 83 hermetic tests and a manual `--help`. Run
+against its own working tree it immediately reported a CRITICAL: `mcp/package.json` declared
+`"bin": "./bin/devdigest.mjs"` while that file was untracked, so it was absent from
+`git diff HEAD` and would break on install. A second run found `blockers`/`fail_on` reachable
+as `undefined` in the response schema the exit code reads. Neither is findable by a test —
+the first is a fact about the *repository state*, not the code.
+**Rule:** for any tool that consumes a repo (a reviewer, a linter, an indexer), the last
+verification step is pointing it at this repo's own pending diff, before the commit. Two
+non-obvious details: it needs the API running (`./scripts/dev.sh`), and `git add` the new
+files first or the tool reviews everything *except* what you just wrote — which is exactly
+the blind spot that produced the CRITICAL above.
+_2026-08-14_
+
 ## What Doesn't Work
 
 ### A plan's done-when can name symbols that do not exist in the package it assigns the test to
@@ -36,7 +50,33 @@ belongs in an integration test that hits the endpoint, or in a client test — n
 test. `server/test/smart-diff.test.ts:125`
 _2026-08-08_
 
+**Counterpart — a done-when is also unsatisfiable when the command it names fails on the empty
+state its own work item creates.** A scaffold item read "`cd mcp && npm install && npm run
+typecheck && npm test` exits 0 on an empty `src/`". It cannot: with the globs matching nothing,
+`tsc --noEmit -p tsconfig.json` exits non-zero with `error TS18003: No inputs were found in
+config file ... Specified 'include' paths were '["src/**/*.ts","test/**/*.ts"]'`. Vitest has the
+mirror-image quirk and needs `--passWithNoTests`, which the repo's npm packages already pass —
+so only half the command was ever going to be green.
+**Rule:** check a scaffold item's done-when against the state that item actually leaves behind,
+which for a package skeleton is zero source files. Either move the typecheck condition to the
+first item that writes a `.ts` file, or have the scaffold ship one. The generic form: a
+done-when naming a command needs the command run against the *expected* state, not merely
+against a plausible one. `mcp/package.json`
+_2026-08-13_
+
 ## Codebase Patterns
+
+### `pull_requests` has no merge timestamp and no author avatar, so a "prior PRs" contract cannot be filled from it as written
+**Symptom:** `PrHistoryItem` (`contracts/brief.ts:65-72`) declares `merged_at`, which reads as
+a column and is not one. `src/db/schema/pulls.ts:5-34` has `status` (default `'needs_review'`)
+and `updated_at`, and nothing else about merging; there is no avatar column either, so a
+`author_avatar` field added to a response is permanently null.
+**Rule:** derive "merged" from `status = 'merged'` and carry `updated_at` as `merged_at`, with
+a comment saying so at the contract — the name outlives the explanation otherwise. Before
+adding a display field to a PR-shaped contract, grep the schema for the column: a field that
+can never be non-null is worse than an absent one, because the client branches on it forever.
+`server/src/modules/reviews/repository/pull.repo.ts` (`getPriorPrs`)
+_2026-08-14_
 
 ### A Zod field parsed back out of a jsonb column must be `.nullish()`, never `.nullable()`
 **Symptom:** re-adding `cost_usd` to `RunStats` as `.nullable()` typechecks and passes fresh tests,
@@ -240,6 +280,19 @@ rather than as an empty result — or pass `grep -E` explicitly. The banner `rtk
 'rg' via PATH, falling back to direct exec` is the signal that this is in play, and it appears on
 stderr where a piped command will hide it.
 _2026-08-07_
+
+**Counterpart — a probe can compile cleanly, write nothing to stderr, and still be a false
+negative, because the call site does not spell the identifier the way the probe does.**
+`fetch\(` over `mcp/src` returned `0 matches` while `mcp/src/adapters/http-client.ts` held two
+live references: the call reads `doFetch(`, and `fetch(` is not a substring of `doFetch(` under
+ripgrep's default case-sensitive matching. Neither half of the parent entry catches this — the
+pattern was valid and the tool was ripgrep.
+**Rule:** anchor an identifier probe on a word boundary rather than on a punctuation suffix —
+`\bfetch\b`, not `fetch\(`. Then prove the probe is live by checking it DOES hit the file that
+legitimately owns the call, not only that it misses everywhere else. A probe never observed to
+match anything has never been tested, and a `0` from it means nothing. The corrected set for
+that package is in `mcp/README.md`.
+_2026-08-13_
 
 ### A grep probe used as an acceptance criterion counts comment prose, so a header comment must not spell the identifier it forbids
 **Symptom:** a plan shipped probes like `grep -nE "container\.llm|openrouter|reviewPullRequest"

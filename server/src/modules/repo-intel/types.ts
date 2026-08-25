@@ -44,6 +44,13 @@ export interface IndexState extends IndexResult {
   lastIndexedSha: string;
   indexerVersion: number;
   updatedAt: Date;
+  /**
+   * Import edges the last index actually wrote, from `stats.edgesWritten`.
+   * `undefined` when the run predates the field. ZERO over a non-empty file
+   * set means the graph is missing, whatever `status` says — and nothing that
+   * needs resolved references can work without it.
+   */
+  edgesWritten?: number;
   /** True when the layer is running on the ripgrep fallback. */
   degraded?: boolean;
   degradedReason?: DegradedReason;
@@ -84,6 +91,33 @@ export interface BlastResult {
   factsByFile?: Record<string, { endpoints: string[]; crons: string[] }>;
   degraded?: boolean;
   reason?: DegradedReason;
+}
+
+// ---------------------------------------------------------------------------
+// Reverse-import impact (facade method `getReverseImpact`).
+//
+// `getBlastRadius` attributes endpoints from the file_facts of DIRECT caller
+// files only. That misses the common shape: a changed util is called by a
+// service, and the route file merely imports the service — so the route's
+// endpoints are one import hop beyond anything the caller set contains. This
+// walk covers those hops.
+// ---------------------------------------------------------------------------
+
+export interface ReverseImpactRow {
+  /** The reached file: a (transitive) importer of one of the seeds. */
+  file: string;
+  /** Hops from the seed. 0 = a seed itself, 1 = direct importer, 2 = its importer. */
+  depth: number;
+  /** Seed file(s) this row descends from, so endpoints can be attributed back. */
+  originFiles: string[];
+  endpoints: string[];
+  crons: string[];
+}
+
+export interface ReverseImpactResult {
+  rows: ReverseImpactRow[];
+  /** Seeds whose expansion hit the fan-out cap — the walk under them is INCOMPLETE. */
+  truncatedFrom: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +179,13 @@ export interface RepoIntel {
 
   // --- Reads --------------------------------------------------------------
   getBlastRadius(repoId: string, changedFiles: string[]): Promise<BlastResult>;
+  /**
+   * Who depends on `files`, up to `BFS_DEPTH` levels out, with each reached
+   * file's precomputed endpoints/crons. Pure Postgres over `file_edges` +
+   * `file_facts` — no clone read, no AST work. Returns empty rows when the flag
+   * is off or nothing is indexed.
+   */
+  getReverseImpact(repoId: string, files: string[]): Promise<ReverseImpactResult>;
   getRepoMap(repoId: string, tokenBudget?: number): Promise<RepoMapResult>;
   getFileRank(repoId: string, paths: string[]): Promise<FileRankRow[]>;
   getSymbolsInFiles(repoId: string, paths: string[]): Promise<SymbolRow[]>;
