@@ -172,6 +172,66 @@ describe('endpoint attribution reaches through the import graph', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Endpoints extracted from a test file are calls, not declarations. Left in,
+// they dominated the answer: eleven integration tests importing `app.ts` put 52
+// of 57 endpoints on one pull request in this repository.
+// ---------------------------------------------------------------------------
+
+describe('test files are not an HTTP surface', () => {
+  const changedSymbols = [{ file: 'src/util.ts', name: 'helper', kind: 'function' }];
+  const callers = [
+    { file: 'src/service.ts', symbol: 'doWork', viaSymbol: 'helper', line: 12, rank: 1 },
+  ];
+
+  const impact = (file: string): ReverseImpactRead => ({
+    rows: [
+      { file, depth: 1, originFiles: ['src/service.ts'], endpoints: ['GET /x'], crons: [] },
+    ],
+    truncatedFrom: [],
+  });
+
+  it.each([
+    'test/reviews.it.test.ts',
+    'src/modules/blast/helpers.spec.ts',
+    'src/__tests__/routes.ts',
+    'tests/smoke.ts',
+    'client/src/lib/api.test.tsx',
+  ])('drops the endpoints a walked %s claims', (file) => {
+    const res = map({ blast: { changedSymbols, callers }, impact: impact(file) });
+    expect(res.downstream[0]!.endpoints_affected).toEqual([]);
+  });
+
+  it.each(['src/routes.ts', 'src/latest/contest.ts', 'src/protest.ts'])(
+    'keeps the endpoints %s declares',
+    (file) => {
+      // Guards the regex against matching a path that merely CONTAINS "test":
+      // `contest.ts` and `protest.ts` are production files.
+      const res = map({ blast: { changedSymbols, callers }, impact: impact(file) });
+      expect(res.downstream[0]!.endpoints_affected).toEqual(['GET /x']);
+    },
+  );
+
+  it('drops them from the facade’s direct attribution too', () => {
+    // Same rule, other source: `factsByFile` is depth 0, where a caller file is
+    // its own fact carrier. A test that calls the changed symbol lands here.
+    const res = map({
+      blast: {
+        changedSymbols,
+        callers: [
+          { file: 'test/util.test.ts', symbol: 'it', viaSymbol: 'helper', line: 3, rank: 1 },
+        ],
+        factsByFile: { 'test/util.test.ts': { endpoints: ['GET /x'], crons: ['nightly'] } },
+      },
+    });
+
+    expect(res.downstream[0]!.endpoints_affected).toEqual([]);
+    expect(res.downstream[0]!.crons_affected).toEqual([]);
+    // The caller itself is NOT dropped — "your tests cover this" still reads.
+    expect(res.downstream[0]!.callers).toHaveLength(1);
+  });
+});
+
 describe('per-caller attribution', () => {
   it('gives each caller only the endpoints of its own file', () => {
     // Two callers, two endpoints. A flat per-symbol union would let a graph draw

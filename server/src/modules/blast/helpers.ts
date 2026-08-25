@@ -32,6 +32,22 @@ export const MAX_CALLERS_PER_SYMBOL = 20;
 /** How many merged PRs the history section shows. */
 export const MAX_PRIOR_PRS = 5;
 
+/**
+ * Files whose extracted endpoints are calls, never declarations.
+ *
+ * `extractEndpoints` is a line regex over source, so it cannot tell
+ * `app.get('/health')` from `inject({ url: 'GET /health' })`. In a test file the
+ * hits are always the second kind: the endpoints a test EXERCISES. Attributing
+ * them as downstream impact is wrong twice over — the endpoint is not declared
+ * there, and a test importing your code is not something your change can break
+ * for a user. Measured on this repository, eleven integration tests importing
+ * `app.ts` accounted for 52 of 57 reported endpoints on a single pull request.
+ *
+ * Only the FACTS are dropped. A test that calls a changed symbol stays in the
+ * caller list, where "your tests cover this" is worth reading.
+ */
+const TEST_PATH_RE = /(?:^|\/)(?:test|tests|__tests__)\/|\.(?:test|spec)\.[cm]?[jt]sx?$/;
+
 interface FactSet {
   endpoints: Set<string>;
   crons: Set<string>;
@@ -48,6 +64,10 @@ function mergeInto(target: FactSet, endpoints: string[], crons: string[]): void 
 
 /**
  * Endpoints and jobs reachable from each caller file.
+ *
+ * Rows from test files are dropped here rather than upstream: see
+ * `TEST_PATH_RE`. This is the one place both sources of facts — the facade's
+ * direct attribution and the reverse walk's — pass through.
  *
  * A reverse-walk row is attributed to every seed it descends from, so an
  * endpoint two import hops out still lands on the caller — and therefore on the
@@ -67,9 +87,11 @@ function factsByCallerFile(blast: BlastRadiusRead, impact: ReverseImpactRead): M
   };
 
   for (const [file, facts] of Object.entries(blast.factsByFile ?? {})) {
+    if (TEST_PATH_RE.test(file)) continue;
     mergeInto(at(file), facts.endpoints, facts.crons);
   }
   for (const row of impact.rows) {
+    if (TEST_PATH_RE.test(row.file)) continue;
     for (const origin of row.originFiles) mergeInto(at(origin), row.endpoints, row.crons);
   }
   return byFile;

@@ -50,6 +50,7 @@ import {
   INDEX_JOB_KIND,
   INDEXER_VERSION,
   MAX_CALLERS_PER_SYMBOL,
+  MAX_HUB_FANIN,
   MAX_REVERSE_FANOUT,
   REFRESH_JOB_KIND,
   RESYNC_JOB_KIND,
@@ -318,6 +319,10 @@ export class RepoIntelService implements RepoIntel {
    * attribution carrier (so an endpoint found two hops out is still traced back
    * to the caller, and therefore to the changed symbol, it belongs to).
    *
+   * Hub files are not traversed THROUGH (see `MAX_HUB_FANIN`), which keeps the
+   * walk answering "what does this change reach" rather than "what does this
+   * repository contain".
+   *
    * Costs exactly BFS_DEPTH queries plus one facts read, regardless of how many
    * files are involved.
    */
@@ -338,11 +343,28 @@ export class RepoIntelService implements RepoIntel {
       depthOf.set(f, 0);
     }
 
+    const seeds = new Set(files);
     let frontier = [...files];
     for (let depth = 1; depth <= BFS_DEPTH && frontier.length > 0; depth += 1) {
       const edges = await this.repo.getReverseEdges(repoId, frontier);
+
+      // Reverse fan-in of every frontier member, for free: the query above
+      // returned one row per importer, so the number of rows sharing a `toFile`
+      // IS how many files import it. Counting here rather than asking the
+      // database keeps the "exactly BFS_DEPTH queries" promise above true.
+      const fanIn = new Map<string, number>();
+      for (const e of edges) fanIn.set(e.toFile, (fanIn.get(e.toFile) ?? 0) + 1);
+
       const next: string[] = [];
       for (const e of edges) {
+        // Hub guard. A file this many others import is shared infrastructure,
+        // and a path running through it carries no information about the change:
+        // everything reaches `app.ts`, so expanding FROM `app.ts` would hand its
+        // own importers — here, eleven integration tests — to every server file
+        // in the repository. The hub keeps its place and its own facts; only the
+        // step past it is refused. Seeds are exempt: they are callers the
+        // request asked about, so their fan-out is the answer, not noise.
+        if (!seeds.has(e.toFile) && (fanIn.get(e.toFile) ?? 0) > MAX_HUB_FANIN) continue;
         const seedOrigins = origins.get(e.toFile);
         if (!seedOrigins) continue;
         const seen = origins.get(e.fromFile);
