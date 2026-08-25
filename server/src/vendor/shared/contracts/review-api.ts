@@ -119,6 +119,16 @@ export type CallerResolution = z.infer<typeof CallerResolution>;
 
 export const DownstreamNode = DownstreamImpact.extend({
   callers: z.array(BlastCallerNode),
+  /**
+   * The file that DECLARES `symbol`.
+   *
+   * A name is not an identity. A facade delegating to a split repository
+   * declares `getPull` twice — once forwarding, once for real — and a reader
+   * given only the name sees two rows it cannot tell apart, each showing the
+   * other's callers. Measured on one pull request: 6 such pairs put 19 phantom
+   * caller rows into a list of 136.
+   */
+  file: z.string().default(''),
   resolution: CallerResolution.default('found'),
   /**
    * How many times the index sees this name referenced anywhere, resolved or

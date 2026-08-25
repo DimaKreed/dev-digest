@@ -344,3 +344,80 @@ describe('blastNoCallers refuses to call unmeasured silence a measurement', () =
     expect(msg).toContain('Do not read this as "the change is contained"');
   });
 });
+
+describe('two declarations of one name stay distinguishable', () => {
+  const twin = (file: string, callers: number) => ({
+    symbol: 'getPull',
+    file,
+    callers: Array.from({ length: callers }, (_, i) => ({
+      name: `use${i}`,
+      file: `c${i}.ts`,
+      line: i + 1,
+      endpoints_affected: [],
+      crons_affected: [],
+    })),
+    endpoints_affected: [],
+    crons_affected: [],
+    resolution: 'found',
+    mentions: callers,
+  });
+
+  it('prints the declaring file, so the two entries are not one fact twice', () => {
+    const out = formatBlastRadius(
+      {
+        symbolCount: 2,
+        downstream: [
+          { symbol: 'getPull', file: 'src/repository.ts', callers: [], callerCount: 5, endpoints: [], crons: [] },
+          { symbol: 'getPull', file: 'src/repository/pull.repo.ts', callers: [], callerCount: 1, endpoints: [], crons: [] },
+        ],
+        total: 2,
+        totalCallers: 6,
+        endpoints: [],
+        crons: [],
+        summary: null,
+        callersPerSymbol: CALLERS_PER_SYMBOL,
+      },
+      'concise',
+    );
+
+    expect(out).toContain('[src/repository.ts]');
+    expect(out).toContain('[src/repository/pull.repo.ts]');
+  });
+
+  it('omits the bracket entirely when the server sent no file', () => {
+    // An older server, or the degraded path. Printing `[]` would read as a fact.
+    const out = formatBlastRadius(
+      {
+        symbolCount: 1,
+        downstream: [{ symbol: 'helper', callers: [], callerCount: 2, endpoints: [], crons: [] }],
+        total: 1,
+        totalCallers: 2,
+        endpoints: [],
+        crons: [],
+        summary: null,
+        callersPerSymbol: CALLERS_PER_SYMBOL,
+      },
+      'concise',
+    );
+
+    expect(out).toContain('helper');
+    expect(out).not.toContain('[');
+  });
+
+  it('breaks the sort tie on the file, so repeated calls agree', async () => {
+    const result = await getBlastRadius(
+      deps({
+        changed_symbols: [
+          { name: 'getPull', file: 'src/z.ts', kind: 'method' },
+          { name: 'getPull', file: 'src/a.ts', kind: 'method' },
+        ],
+        downstream: [twin('src/z.ts', 2), twin('src/a.ts', 2)],
+        state: 'ok',
+      }),
+      input,
+    );
+    if (!result.ok) return expect.fail('expected ok');
+
+    expect(result.value.downstream.map((d) => d.file)).toEqual(['src/a.ts', 'src/z.ts']);
+  });
+});

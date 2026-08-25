@@ -72,6 +72,12 @@ export interface BlastCallerRow {
   symbol: string;
   /** Which changed symbol this caller reaches. */
   viaSymbol: string;
+  /**
+   * Which FILE declares that symbol. A name is not an identity: a facade that
+   * delegates to a split repository declares `getPull` twice, and a consumer
+   * grouping on the name alone shows each declaration the other's callers.
+   */
+  viaFile: string;
   /** 1-based line of the reference (representative; for the BlastRadius view). */
   line: number;
   /** file_rank.rank of the caller file (0 in the degraded/ripgrep path). */

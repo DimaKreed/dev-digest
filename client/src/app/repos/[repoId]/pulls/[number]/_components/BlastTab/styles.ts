@@ -68,8 +68,19 @@ export const s = {
     fontSize: 13,
     color: "var(--text-primary)",
   } satisfies CSSProperties,
+  symbolFile: {
+    fontFamily: "var(--font-mono, monospace)",
+    fontSize: 11.5,
+    color: "var(--text-muted)",
+    // Long paths must not push the count off the row.
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minWidth: 0,
+  } satisfies CSSProperties,
   symbolCount: {
     marginLeft: "auto",
+    flexShrink: 0,
     fontSize: 11.5,
     color: "var(--text-muted)",
   } satisfies CSSProperties,

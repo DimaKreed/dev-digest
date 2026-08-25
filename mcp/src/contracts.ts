@@ -216,6 +216,13 @@ export type BlastCallerBrief = z.infer<typeof BlastCallerBrief>;
  */
 export const DownstreamImpactBrief = z.object({
   symbol: z.string(),
+  /**
+   * The file declaring `symbol`. A name is not an identity — a facade forwarding
+   * to a split repository declares one twice — so two entries can share a name
+   * and carry different callers. Nullish: an older server does not send it, and
+   * the formatter then prints the name alone rather than failing.
+   */
+  file: z.string().nullish(),
   callers: z.array(BlastCallerBrief).nullish(),
   endpoints_affected: z.array(z.string()).nullish(),
   crons_affected: z.array(z.string()).nullish(),

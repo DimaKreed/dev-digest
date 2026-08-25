@@ -43,6 +43,9 @@ function node(
     callers: [],
     endpoints_affected: [],
     crons_affected: [],
+    // A symbol is (name, declaring file), so a fixture needs both; derived from
+    // the name unless the test is about two files declaring one name.
+    file: `src/${over.symbol}.ts`,
     resolution: (over.callers?.length ?? 0) > 0 ? "found" : "unreferenced",
     mentions: 0,
     ...over,
@@ -52,6 +55,7 @@ function node(
 const TWO_CALLERS: BlastRadiusResponse["downstream"] = [
   {
     symbol: "rateLimit",
+    file: "src/api/rateLimit.ts",
     callers: [
       {
         name: "publicRouter",
@@ -133,6 +137,7 @@ describe("the header counts what was measured", () => {
       downstream: [
         {
           symbol: "alpha",
+          file: "a.ts",
           callers: [
             {
               name: "x",
@@ -149,6 +154,7 @@ describe("the header counts what was measured", () => {
         },
         {
           symbol: "beta",
+          file: "b.ts",
           callers: [
             {
               name: "y",
@@ -476,6 +482,7 @@ describe("types are set aside, not listed", () => {
       downstream: [
         {
           symbol: "RowShape",
+          file: "a.ts",
           callers: [
             {
               name: "use",
@@ -535,6 +542,79 @@ describe("an empty result over an incomplete index is not a finding", () => {
     renderTab();
 
     expect(screen.getByText("No downstream impact found")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two declarations of one name. The repository produces these structurally —
+// `ReviewRepository.getPull` forwards to `pull.repo.getPull` — and two rows
+// reading `getPull()` are unreadable without the file that declares each.
+// ---------------------------------------------------------------------------
+
+describe("a row names the file that declares it", () => {
+  const twins = () =>
+    response({
+      changed_symbols: [
+        { name: "getPull", file: "src/repository.ts", kind: "method" },
+        { name: "getPull", file: "src/repository/pull.repo.ts", kind: "function" },
+      ],
+      downstream: [
+        node({
+          symbol: "getPull",
+          file: "src/repository.ts",
+          resolution: "found",
+          callers: [
+            {
+              name: "svc",
+              file: "src/service.ts",
+              line: 5,
+              endpoints_affected: [],
+              crons_affected: [],
+            },
+          ],
+        }),
+        node({
+          symbol: "getPull",
+          file: "src/repository/pull.repo.ts",
+          resolution: "found",
+          callers: [
+            {
+              name: "facade",
+              file: "src/repository.ts",
+              line: 40,
+              endpoints_affected: [],
+              crons_affected: [],
+            },
+          ],
+        }),
+      ],
+    });
+
+  it("shows the declaring file next to the name", () => {
+    blastState.data = twins();
+    renderTab();
+
+    expect(screen.getByText("src/repository.ts")).toBeInTheDocument();
+    expect(screen.getByText("src/repository/pull.repo.ts")).toBeInTheDocument();
+  });
+
+  it("keeps the two rows collapsing independently", () => {
+    // The React key has to carry the file too. Sharing an identity means sharing
+    // collapse state, so expanding one row would open the other — and with two
+    // rows named alike a reader could not tell which list they were reading.
+    blastState.data = twins();
+    renderTab();
+
+    const rows = screen.getAllByRole("button", { expanded: false });
+    const delegate = rows.find((r) => r.textContent?.includes("src/repository/pull.repo.ts"));
+    fireEvent.click(delegate!);
+
+    // Exactly one row opened...
+    expect(screen.getAllByRole("button", { expanded: true })).toHaveLength(1);
+    // ...and it shows ITS OWN caller, not the other declaration's. This is the
+    // merged-list bug made visible: before the split both rows listed both.
+    expect(screen.getByText("src/repository.ts:40")).toBeInTheDocument();
+    expect(screen.queryByText("src/service.ts:5")).not.toBeInTheDocument();
   });
 });
 

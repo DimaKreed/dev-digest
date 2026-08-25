@@ -128,6 +128,16 @@ export interface ResolvedCallerRow {
   toSymbol: string;
   line: number;
   rank: number;
+  /**
+   * The declaring file this reference resolved to.
+   *
+   * Non-null by construction — the query filters `decl_file IN declFiles` — and
+   * load-bearing: a name alone cannot tell two declarations apart, and a
+   * delegating facade produces those constantly (`ReviewRepository.getPull`
+   * forwarding to `pull.repo.getPull`). Without this the consumer merges both
+   * declarations' callers into one list and shows it under both.
+   */
+  declFile: string;
 }
 
 export class RepoIntelRepository {
@@ -596,6 +606,8 @@ export class RepoIntelRepository {
         toSymbol: t.references.toSymbol,
         line: t.references.line,
         rank: t.fileRank.rank,
+        // `inArray(declFile, declFiles)` below makes this non-null.
+        declFile: sql<string>`${t.references.declFile}`,
       })
       .from(t.references)
       .innerJoin(

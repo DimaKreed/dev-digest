@@ -25,17 +25,38 @@ import type {
 
 const NO_IMPACT: ReverseImpactRead = { rows: [], truncatedFrom: [] };
 
-function blastRead(over: Partial<BlastRadiusRead> = {}): BlastRadiusRead {
+/**
+ * A caller fixture may omit `viaFile`, in which case it is filled in from the
+ * one changed symbol carrying that name.
+ *
+ * The mapper keys on (name, declaring file) because a name is not an identity —
+ * a facade forwarding to a split repository declares `getPull` twice. Most tests
+ * here are about something else and have exactly one declaration per name, so
+ * making them all restate it would be noise. A test that IS about two
+ * declarations sets `viaFile` explicitly.
+ */
+type CallerFixture = Omit<BlastRadiusRead['callers'][number], 'viaFile'> & {
+  viaFile?: string;
+};
+
+function blastRead(
+  over: Omit<Partial<BlastRadiusRead>, 'callers'> & { callers?: CallerFixture[] } = {},
+): BlastRadiusRead {
+  const changedSymbols = over.changedSymbols ?? [];
+  const declOf = new Map(changedSymbols.map((sym) => [sym.name, sym.file]));
   return {
-    changedSymbols: [],
-    callers: [],
     impactedEndpoints: [],
     ...over,
+    changedSymbols,
+    callers: (over.callers ?? []).map((c) => ({
+      ...c,
+      viaFile: c.viaFile ?? declOf.get(c.viaSymbol) ?? '',
+    })),
   };
 }
 
 function map(input: {
-  blast?: Partial<BlastRadiusRead>;
+  blast?: Omit<Partial<BlastRadiusRead>, 'callers'> & { callers?: CallerFixture[] };
   impact?: ReverseImpactRead;
   mentions?: Map<string, number>;
   indexStatus?: IndexStateRead['status'] | null;
@@ -132,6 +153,115 @@ describe('what belongs in downstream', () => {
 
     expect(res.downstream.map((d) => d.symbol)).toEqual(['alpha', 'lonely']);
     expect(res.downstream[1]!.callers).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A symbol is (name, declaring file). A name alone is not an identity, and this
+// repository produces collisions structurally: `ReviewRepository.getPull`
+// forwards to `pull.repo.getPull`, so both files declare the name. Grouping on
+// the name put 19 phantom caller rows into a list of 136 on one pull request.
+// ---------------------------------------------------------------------------
+
+describe('two declarations of one name are two symbols', () => {
+  const changedSymbols = [
+    { file: 'src/repository.ts', name: 'getPull', kind: 'method' },
+    { file: 'src/repository/pull.repo.ts', name: 'getPull', kind: 'function' },
+  ];
+  const callers = [
+    // Five reach the facade...
+    ...Array.from({ length: 5 }, (_, i) => ({
+      file: `src/svc${i}.ts`,
+      symbol: `use${i}`,
+      viaSymbol: 'getPull',
+      viaFile: 'src/repository.ts',
+      line: i + 1,
+      rank: 5 - i,
+    })),
+    // ...and exactly one reaches the delegate it forwards to.
+    {
+      file: 'src/repository.ts',
+      symbol: 'getPull',
+      viaSymbol: 'getPull',
+      viaFile: 'src/repository/pull.repo.ts',
+      line: 40,
+      rank: 9,
+    },
+  ];
+
+  it('splits the callers between them instead of showing each both lists', () => {
+    const res = map({ blast: { changedSymbols, callers } });
+
+    const byFile = new Map(res.downstream.map((d) => [d.file, d.callers.length]));
+    expect(byFile.get('src/repository.ts')).toBe(5);
+    expect(byFile.get('src/repository/pull.repo.ts')).toBe(1);
+    // Six references in, six rows out — not eleven.
+    expect(res.downstream.reduce((total, d) => total + d.callers.length, 0)).toBe(6);
+  });
+
+  it('carries the declaring file so the two rows can be told apart', () => {
+    const res = map({ blast: { changedSymbols, callers } });
+
+    expect(res.downstream.map((d) => d.symbol)).toEqual(['getPull', 'getPull']);
+    expect(res.downstream.map((d) => d.file)).toEqual([
+      'src/repository.ts',
+      'src/repository/pull.repo.ts',
+    ]);
+  });
+
+  it('breaks a tie on the declaring file, so the order is total', () => {
+    // Same name, same caller count: without the third sort key their order is
+    // whatever the database returned, and the two rows swap between requests.
+    const res = map({
+      blast: {
+        changedSymbols: [
+          { file: 'src/z.ts', name: 'dup', kind: 'function' },
+          { file: 'src/a.ts', name: 'dup', kind: 'function' },
+        ],
+        callers: [
+          { file: 'c.ts', symbol: 'x', viaSymbol: 'dup', viaFile: 'src/z.ts', line: 1, rank: 1 },
+          { file: 'c.ts', symbol: 'y', viaSymbol: 'dup', viaFile: 'src/a.ts', line: 2, rank: 1 },
+        ],
+      },
+    });
+
+    expect(res.downstream.map((d) => d.file)).toEqual(['src/a.ts', 'src/z.ts']);
+  });
+
+  it('gives each declaration its own per-symbol budget', () => {
+    // A shared budget would let the busier declaration starve the other, which
+    // is the flat-cap bug one level down.
+    const res = map({
+      blast: {
+        changedSymbols,
+        callers: ['src/repository.ts', 'src/repository/pull.repo.ts'].flatMap((viaFile) =>
+          Array.from({ length: MAX_CALLERS_PER_SYMBOL + 3 }, (_, i) => ({
+            file: `${viaFile}-caller${i}.ts`,
+            symbol: `use${i}`,
+            viaSymbol: 'getPull',
+            viaFile,
+            line: i + 1,
+            rank: 1,
+          })),
+        ),
+      },
+    });
+
+    for (const node of res.downstream) {
+      expect(node.callers).toHaveLength(MAX_CALLERS_PER_SYMBOL);
+    }
+  });
+
+  it('excludes a reference living in its own declaring file, per declaration', () => {
+    // The self-reference guard has to compare against the caller's OWN
+    // declaration now: a reference inside `repository.ts` is not a downstream
+    // caller of `repository.ts`'s getPull, but it IS one of pull.repo's.
+    const res = map({ blast: { changedSymbols, callers } });
+
+    const facade = res.downstream.find((d) => d.file === 'src/repository.ts');
+    expect(facade!.callers.map((c) => c.file)).not.toContain('src/repository.ts');
+    const delegate = res.downstream.find((d) => d.file === 'src/repository/pull.repo.ts');
+    expect(delegate!.callers[0]!.file).toBe('src/repository.ts');
   });
 });
 

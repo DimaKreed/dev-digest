@@ -129,6 +129,8 @@ export function formatConventions(
 /** One affected symbol, as `get-blast-radius` projects it. */
 export interface BlastImpactView {
   symbol: string;
+  /** Declaring file. Printed when present — a name alone can be ambiguous. */
+  file?: string | null;
   callers: { name: string; file: string; line: number | null; endpoints: string[] }[];
   callerCount: number;
   endpoints: string[];
@@ -167,7 +169,11 @@ export function formatBlastRadius(
       impact.callers.length < impact.callerCount
         ? ` (${impact.callerCount} callers, showing ${impact.callers.length})`
         : ` (${impact.callerCount} caller(s))`;
-    lines.push(`${impact.symbol}${shown}`);
+    // The file is part of the identity, not decoration: without it two entries
+    // print as the same `getPull (5 caller(s))` / `getPull (1 caller(s))` pair
+    // and a reader cannot tell which declaration either belongs to.
+    const declaredIn = impact.file ? `  [${impact.file}]` : '';
+    lines.push(`${impact.symbol}${shown}${declaredIn}`);
     if (format !== 'detailed') continue;
 
     for (const caller of impact.callers) {

@@ -242,32 +242,29 @@ export function toBlastResponse(input: {
     file: s.file,
     kind: s.kind,
   }));
-  const kindOf = new Map(blast.changedSymbols.map((s) => [s.name, s.kind]));
-  const declFileOf = new Map(blast.changedSymbols.map((s) => [s.name, s.file]));
+
+  // Composite key throughout: a symbol is (name, declaring file), never a name.
+  const keyOf = (name: string, file: string): string => `${name} ${file}`;
   const facts = factsByCallerFile(blast, impact);
 
   // Group by the symbol reached. `blast.callers` arrives sorted by file rank
   // descending, and a Map preserves insertion order, so each group keeps that
   // order without a second sort.
   //
-  // KNOWN LIMIT — grouping is by NAME, so if two changed files each declare a
-  // symbol of the same name, their callers merge into one list and both
-  // downstream entries show it. The facade cannot tell them apart: a
-  // `BlastCallerRow` carries the name it reached (`viaSymbol`) but not the file
-  // that declared it, because `getResolvedCallers` filters `decl_file` against
-  // the whole changed set and does not return it. Splitting them means carrying
-  // `declFile` through the facade row, which is a repo-intel change rather than
-  // a mapping one. Until then this over-reports rather than under-reports, which
-  // is the safer direction for a blast radius.
+  // Grouped by symbol AND declaring file. Grouping on the name alone merged two
+  // declarations that share one — `ReviewRepository.getPull` forwarding to
+  // `pull.repo.getPull` — and then showed each of them the other's callers: 6
+  // such pairs put 19 phantom rows into a list of 136 on one pull request.
   const byVia = new Map<string, BlastCallerRead[]>();
   for (const c of blast.callers) {
     // A reference from inside the declaring file is not a downstream caller.
     // The resolver already excludes these incidentally; stating it here makes
     // the invariant local and testable.
-    if (declFileOf.get(c.viaSymbol) === c.file) continue;
-    const group = byVia.get(c.viaSymbol);
+    if (c.viaFile === c.file) continue;
+    const key = keyOf(c.viaSymbol, c.viaFile);
+    const group = byVia.get(key);
     if (group) group.push(c);
-    else byVia.set(c.viaSymbol, [c]);
+    else byVia.set(key, [c]);
   }
 
   const allEndpoints = new Set<string>();
@@ -277,7 +274,10 @@ export function toBlastResponse(input: {
   // Iterate the changed symbols, not the groups: a symbol nothing calls still
   // belongs in the response, with an empty caller list.
   const downstream = changedSymbols.map((sym) => {
-    const capped = (byVia.get(sym.name) ?? []).slice(0, MAX_CALLERS_PER_SYMBOL);
+    const capped = (byVia.get(keyOf(sym.name, sym.file)) ?? []).slice(
+      0,
+      MAX_CALLERS_PER_SYMBOL,
+    );
     callerCount += capped.length;
 
     const symEndpoints = new Set<string>();
@@ -301,15 +301,20 @@ export function toBlastResponse(input: {
       };
     });
 
+    // `mentions` is keyed on the NAME, deliberately: "how often does this
+    // repository say `getPull`" is a fact about the name, and two declarations
+    // sharing one cannot be told apart by a reference the resolver never tied
+    // to either. It only ever decides between two flavours of empty.
     const seen = mentions.get(sym.name) ?? 0;
     return {
       symbol: sym.name,
+      file: sym.file,
       callers,
       // Attributed from the capped set only: an endpoint reachable solely
       // through a caller this response omits should not be advertised.
       endpoints_affected: [...symEndpoints].sort(),
       crons_affected: [...symCrons].sort(),
-      resolution: resolutionOf(kindOf.get(sym.name) ?? '', callers.length, seen),
+      resolution: resolutionOf(sym.kind, callers.length, seen),
       mentions: seen,
     };
   });
@@ -325,7 +330,14 @@ export function toBlastResponse(input: {
   // Tiebreak by name so the order is total and the same input always renders
   // identically — `Array.prototype.sort` is stable, but the array it is handed
   // is only as stable as the database's row order.
-  downstream.sort((a, b) => b.callers.length - a.callers.length || a.symbol.localeCompare(b.symbol));
+  downstream.sort(
+    (a, b) =>
+      b.callers.length - a.callers.length ||
+      a.symbol.localeCompare(b.symbol) ||
+      // Two declarations of one name would otherwise tie, leaving their order to
+      // whatever the database returned.
+      a.file.localeCompare(b.file),
+  );
 
   const { state, reason } = deriveState(
     indexStatus,

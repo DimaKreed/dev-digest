@@ -277,13 +277,17 @@ export class RepoIntelService implements RepoIntel {
       for (const r of refs) {
         if (r.fromPath === sym.file) continue; // skip the decl's own file
         const callerName = enclosingSymbolName(allSymbols, r.fromPath, r.line);
-        const key = `${r.fromPath}|${callerName}|${sym.name}`;
+        // `sym.file` is in the key for the same reason as on the persistent
+        // path: two changed files declaring one name are two declarations, and
+        // this loop visits each of them separately.
+        const key = `${r.fromPath}|${callerName}|${sym.name}|${sym.file}`;
         if (callerSeen.has(key)) continue;
         callerSeen.add(key);
         callerRows.push({
           file: r.fromPath,
           symbol: callerName,
           viaSymbol: sym.name,
+          viaFile: sym.file,
           line: r.line,
           rank: 0, // ripgrep/degraded path has no persistent rank
         });
@@ -465,13 +469,18 @@ export class RepoIntelService implements RepoIntel {
         enclosingFromRows(symsByFile.get(c.fromPath) ?? [], c.line) ??
         c.fromPath.split('/').pop() ??
         c.fromPath;
-      const key = `${c.fromPath}|${enclosing}|${c.toSymbol}`;
+      // `declFile` is part of the identity. Two changed files can declare the
+      // same name — a facade forwarding to a split repository does it for every
+      // method — and collapsing them here would make the two indistinguishable
+      // downstream.
+      const key = `${c.fromPath}|${enclosing}|${c.toSymbol}|${c.declFile}`;
       if (seenCaller.has(key)) continue;
       seenCaller.add(key);
       callers.push({
         file: c.fromPath,
         symbol: enclosing,
         viaSymbol: c.toSymbol,
+        viaFile: c.declFile,
         line: c.line,
         rank: c.rank,
       });
@@ -496,17 +505,23 @@ export class RepoIntelService implements RepoIntel {
     //
     // `callers` is already rank-sorted, and a Map preserves insertion order, so
     // each group keeps that order without a second sort.
+    // Keyed on symbol AND declaring file: each DECLARATION gets its own budget,
+    // so a facade method and the delegate it forwards to do not share one.
     const byVia = new Map<string, BlastCallerRow[]>();
     for (const c of callers) {
-      const group = byVia.get(c.viaSymbol);
+      const key = `${c.viaSymbol} ${c.viaFile}`;
+      const group = byVia.get(key);
       if (group) group.push(c);
-      else byVia.set(c.viaSymbol, [c]);
+      else byVia.set(key, [c]);
     }
     const capped: BlastCallerRow[] = [];
     const cappedSymbols: string[] = [];
     let totalHit = false;
-    for (const [via, group] of byVia) {
-      if (group.length > MAX_CALLERS_PER_SYMBOL) cappedSymbols.push(via);
+    for (const [key, group] of byVia) {
+      // Report the name, not the composite key — it is what a reader recognises.
+      if (group.length > MAX_CALLERS_PER_SYMBOL) {
+        cappedSymbols.push(key.slice(0, key.indexOf(' ')));
+      }
       for (const c of group.slice(0, MAX_CALLERS_PER_SYMBOL)) {
         if (capped.length >= MAX_BLAST_CALLERS_TOTAL) {
           totalHit = true;

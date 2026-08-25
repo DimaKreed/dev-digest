@@ -66,6 +66,8 @@ export function readResolution(
 /** One affected symbol, with its callers already capped. */
 export interface BlastImpact {
   symbol: string;
+  /** The declaring file, so two entries sharing a name stay distinguishable. */
+  file: string | null;
   callers: { name: string; file: string; line: number | null; endpoints: string[] }[];
   /** Total callers before `CALLERS_PER_SYMBOL` cut the printed list. */
   callerCount: number;
@@ -114,6 +116,7 @@ function impactOf(row: DownstreamImpactBrief): BlastImpact {
   const callers = row.callers ?? [];
   return {
     symbol: row.symbol,
+    file: row.file ?? null,
     callerCount: callers.length,
     callers: callers.slice(0, CALLERS_PER_SYMBOL).map((c) => ({
       name: c.name,
@@ -154,7 +157,12 @@ export async function getBlastRadius(
   // returning the same order — output that reorders between calls reads as
   // instability in the data rather than in the sort.
   const ranked = [...withCallers].sort(
-    (a, b) => b.callerCount - a.callerCount || a.symbol.localeCompare(b.symbol),
+    (a, b) =>
+      b.callerCount - a.callerCount ||
+      a.symbol.localeCompare(b.symbol) ||
+      // Two declarations of one name tie on both keys above, and an order left
+      // to the server's row order makes identical requests print differently.
+      (a.file ?? '').localeCompare(b.file ?? ''),
   );
   const shown = ranked.slice(0, input.limit);
 

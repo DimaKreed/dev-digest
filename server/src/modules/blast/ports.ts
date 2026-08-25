@@ -55,6 +55,12 @@ export interface BlastCallerRead {
   symbol: string;
   /** Which changed symbol this caller reaches. */
   viaSymbol: string;
+  /**
+   * Which FILE declares that symbol. Grouping on the name alone merges two
+   * declarations that happen to share one — which a delegating facade produces
+   * for every method it forwards.
+   */
+  viaFile: string;
   line: number;
   /** file_rank.rank of the caller file; 0 on the degraded path. */
   rank: number;
