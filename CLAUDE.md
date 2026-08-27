@@ -49,6 +49,11 @@ Per-package commands live in each module's CLAUDE.md.
   on it.
 - CI is path-filtered per package, with cross-package deps encoded by hand in
   `.github/workflows/` (`server-unit.yml` also triggers on `reviewer-core/**`).
+  One lane is not keyed to a package: `governance.yml` fires on `.claude/**` and
+  runs `scripts/check-agent-frontmatter.mjs` — the only automated coverage the
+  agent and skill definitions get. `server-unit.yml`'s typecheck job also runs
+  `pnpm arch`, so the dependency-cruiser baseline is enforced by CI, not just by
+  the review agents.
 
 ## Conventions
 
@@ -83,3 +88,8 @@ memory, skills, compose) are **intentional scaffolding, not dead code**. Never c
   — the subagent chain for a large change, its artifact hand-offs and its per-run trace, plus the
   gate for when a task is too small to earn one. Agent roster in
   [.claude/agents/README.md](.claude/agents/README.md)
+- [.claude/skills/spec-creator/SKILL.md](.claude/skills/spec-creator/SKILL.md)
+  — stage 1 of that chain: the six question groups, the design critique, EARS acceptance
+  criteria with `AC-NN` ids, and the `draft → approved → implemented` gate
+- [specs/](specs/) — **cross-module** specs. Single-module ones live in that module's `specs/`;
+  the `NN` counter is shared by all five directories, so `SPEC-07` is unambiguous repo-wide

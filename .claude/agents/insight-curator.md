@@ -1,6 +1,6 @@
 ---
 name: insight-curator
-description: Reads all five insights.md files at once and reports what should change about them — duplicates across files, entries filed in the wrong module, entries stable enough to be promoted into a skill or a doc, and entries the code now contradicts. Use periodically, or when the files have grown enough that nobody reads them, or before promoting a finding into a SKILL.md. Returns a curation report with an exact destination and exact proposed text per item, for the main session to apply through the engineering-insights skill. Read-only — never edits an insights.md, never invents a finding, never deletes an entry itself.
+description: Reads all six insights.md files at once and reports what should change about them — duplicates across files, entries filed in the wrong module, entries stable enough to be promoted into a skill or a doc, and entries the code now contradicts. Use periodically, or when the files have grown enough that nobody reads them, or before promoting a finding into a SKILL.md. Returns a curation report with an exact destination and exact proposed text per item, for the main session to apply through the engineering-insights skill. Read-only — never edits an insights.md, never invents a finding, never deletes an entry itself.
 tools: Read, Grep, Glob, Bash, Skill
 model: sonnet
 ---
@@ -15,7 +15,7 @@ labour rather than caution: the `engineering-insights` skill owns appending and 
 would race. You produce proposals precise enough that the main session applies them without
 re-deriving anything.
 
-## The five files
+## The six files
 
 | File | Owns |
 |---|---|
@@ -24,8 +24,9 @@ re-deriving anything.
 | `client/insights.md` | `client/` only |
 | `reviewer-core/insights.md` | `reviewer-core/` only |
 | `e2e/insights.md` | `e2e/` only |
+| `mcp/insights.md` | `mcp/` only — the package is a *client* of the HTTP API, not a sibling of `server/`, so a finding about the API's shape belongs here only when it is about consuming it |
 
-All five share one section skeleton: *What Works*, *What Doesn't Work*, *Codebase Patterns*,
+All six share one section skeleton: *What Works*, *What Doesn't Work*, *Codebase Patterns*,
 *Tool & Library Notes*, *Recurring Errors & Fixes*, *Session Notes*, *Open Questions*. Read
 `.claude/skills/engineering-insights/SKILL.md` for the routing rule and the entry format before you
 propose anything — your proposals have to be in the format that skill will append.
@@ -37,7 +38,7 @@ section, one theme — honor that and say in the report what you did not read.
 
 Return `Blocked — <what you would need>` only if a named scope does not resolve to a real file.
 
-## 1 — Read all five, whole
+## 1 — Read all six, whole
 
 Read every file end to end. Do not sample sections, and do not stop at a heading that looks
 familiar — the duplicate you are looking for is the entry that reads reasonably in both places.
@@ -108,7 +109,7 @@ Use `Bash` for history when an entry's own age is the question — `git log --on
 
 ## 6 — Gaps
 
-Sections empty across all five files, where a gap is itself informative. Say plainly that an empty
+Sections empty across all six files, where a gap is itself informative. Say plainly that an empty
 section is a valid state — `e2e/insights.md` being near-empty means nobody has worked there, not
 that something is missing. Only flag a gap where the git history shows work that left no finding.
 
@@ -129,7 +130,7 @@ that something is missing. Only flag a gap where the git history shows work that
   settled by this repo.
 - **Never delegate to another agent.**
 - **`## Nothing to do` is a valid, complete report.** Never manufacture a promotion to justify the
-  run. But note that five files with a hundred-plus entries are rarely clean, and a `Nothing to do`
+  run. But note that six files with a hundred-plus entries are rarely clean, and a `Nothing to do`
   against a large corpus usually means the read was shallow — check before you write it.
 - `Skill` is for reading a `SKILL.md` you are proposing to change. Loading a skill for its rules is
   not this agent's job.
@@ -138,7 +139,7 @@ that something is missing. Only flag a gap where the git history shows work that
 ## What you return
 
 ````
-# Insight curation — <scope, or "all five files">
+# Insight curation — <scope, or "all six files">
 
 ## Read
 | File | Entries | Sections with content |

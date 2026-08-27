@@ -124,6 +124,26 @@ comparator needs a review-`id` tiebreak to be a total order; and the parity asse
 wanted against the *client* copy is not writable in a server unit test (see *What Doesn't Work*).
 Changing the rule is now a three-file edit. _2026-08-08_
 
+### The `.claude/` governance layer enumerates the five packages by hand in five places, and `mcp/` was missing from three of them
+**Symptom:** `mcp/` has its own `CLAUDE.md`, its own `insights.md` (3.9 KB, full section skeleton)
+and its own `specs/`, yet `.claude/skills/feature-workflow/SKILL.md` mentioned it **zero** times —
+its stage-0 trigger read "two or more packages (`server/`, `client/`, `reviewer-core/`, `e2e/`)",
+so an `mcp/` + `server/` change could never trip the gate that decides whether a change earns the
+agent chain at all. `insight-curator.md`'s "The five files" table and
+`engineering-insights/SKILL.md`'s routing table both omitted `mcp/insights.md` too, so the one
+agent whose entire value is reading every `insights.md` at once was reading five of six and
+nothing about `mcp/` had a legal destination. The two lists that *were* correct —
+`skill-routes.md` § *Types* and `spec-writer.md`'s scope table — show this is drift, not a design
+decision.
+**Rule:** adding a package is not done when root `CLAUDE.md` lists it. Every hand-maintained
+package list in this repo names `reviewer-core`, so `grep -rln 'reviewer-core' .claude/ TESTING.md`
+enumerates the places that need the new name. Nothing validates them:
+`scripts/check-agent-frontmatter.mjs` checks frontmatter only, and neither `skill-routes.md` nor
+`pr-self-review/routing.md` covers `.claude/**` at all. While closing such a gap, do **not** also
+"fix" `mcp/`'s absent cross-package CI edge — root `CLAUDE.md` § *Cross-module wiring* makes that
+isolation deliberate.
+_2026-08-26_
+
 ## Tool & Library Notes
 
 ### `tsconfig.json`'s `include` differs per package, so `pnpm typecheck` proves nothing about tests in `server/` or `reviewer-core/`
@@ -226,7 +246,7 @@ writing `skills: a, b` produces a plain string where an array is expected. Separ
 equivalent, so copying them out of `.claude/skills/*/SKILL.md` — three skills here carry
 `allowed-tools` — silently does nothing instead of erroring.
 **Rule:** extend the out-of-band check above to assert `Array.isArray(d.skills)` and that every
-entry resolves to a real `.claude/skills/<name>/SKILL.md`. `.claude/agents/planner.md:6-8` is the
+entry resolves to a real `.claude/skills/<name>/SKILL.md`. `.claude/agents/implementation-planner.md:6-8` is the
 worked example. Field list verified against https://code.claude.com/docs/en/sub-agents.
 _2026-08-07_
 
@@ -240,7 +260,7 @@ quoting a figure — these move. `node scripts/check-agent-frontmatter.mjs` prin
 preload total as an advisory suffix, which is the cheapest way to see it. As of 2026-08-07 the 14
 `SKILL.md` here total ~144 KB, spread from 962 B (`fastify-best-practices`) to 26.6 KB
 (`react-testing-library`, the one skill no agent preloads — it alone would blow the 25 KB budget).
-`planner` sits at 24.0 KB against that budget and is the house maximum; the four newer agents
+`implementation-planner` sits at 24.8 KB against that budget and is the house maximum; the four newer agents
 preload one skill each or none.
 _2026-08-07_
 
@@ -268,6 +288,21 @@ agents. The sequence that actually discriminates is: validator green ⇒ the fil
 `not found` is the registry, not the frontmatter ⇒ re-invoke in the next session. Reading a
 same-session `not found` as a file defect is what sends you rewriting a file that already passes.
 _2026-08-07_
+
+**Counterpart — agent files cite each other by `file:line`, and nothing checks those anchors.**
+`plan-verifier.md` keys its whole §1 extraction to the plan template's fixed section names and
+cited `.claude/agents/implementation-planner.md:132-218` for it, twice. The range had rotted: the
+template runs `141-237`, and `:132` lands inside `## Rules`, so a reader following the anchor reads
+the wrong contract and the extraction table looks unsupported by the document it claims to key off.
+Its `implementer.md:114-151` was off by two the same way — while all four of its *single-line*
+anchors (`:140`, `:144`, `:135`, `:125`) were still correct. Ranges rot; single lines mostly
+survive.
+**Rule:** `scripts/check-agent-frontmatter.mjs` validates frontmatter only and will never catch
+this. After editing any agent that others cite, run
+`grep -n '<that-file>.md:' .claude/agents/*.md` and re-check every range. When *reading* such an
+anchor, confirm it by section name (`grep -n '^## ' <file>`) instead of jumping to the line number:
+the section name is the durable identifier here, the number is not.
+_2026-08-26_
 
 ### A repo script that shells out to a unix-only binary silently excludes the Windows dev box
 **Symptom:** `scripts/make-skill-sample.sh` died with `zip: command not found`. Git Bash ships no
@@ -343,6 +378,14 @@ server/package.json` returns `H`, not `S` — the flag is not set in this checko
 go hunting for the flag when a `package.json` edit shows up in `git status`, and do not "restore"
 it.
 _2026-08-07_
+
+**Update — the stale half is now gone from the files themselves.** `TESTING.md` § *Conventions* no
+longer claims the flag: it states the live rule (the split lives in CI, `test:unit` /
+`test:integration` do not exist and must not be added) and records that the mechanism was never
+real. The same claim sat in three workflow comments — `server-unit.yml:96`,
+`server-integration.yml:68`, `e2e-web.yml:87` — and all three now explain why the command is
+inlined without invoking the flag. This entry stays as the reason not to reintroduce the
+explanation; it is no longer a live contradiction to work around. _2026-08-26_
 
 ## Recurring Errors & Fixes
 

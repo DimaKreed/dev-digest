@@ -1,0 +1,72 @@
+# Governance — validates the agent definitions under .claude/.
+#
+# This is the ONLY lane that fires on `.claude/**`. Every other workflow is
+# filtered by package directory (server/**, client/**, …), so agent and skill
+# files reached CI with zero automated coverage while still being inside the PR
+# gate's scope fingerprint (.claude/hooks/pr-review-scope.ps1 excludes only
+# insights.md). Neither .claude/skill-routes.md nor pr-self-review/routing.md
+# routes `.claude/**` to anything either — see .claude/agents/README.md
+# § Skill routing.
+#
+# What the check catches, per .claude/agents/README.md § Authoring a new agent:
+# a malformed frontmatter block and a correct-but-not-yet-registered agent both
+# fail with an identical `Agent type '<name>' not found`, so this script is the
+# only thing that tells them apart. It also asserts the READONLY set keeps Write
+# and Edit withheld — the realistic regression nothing else in the repo notices.
+#
+# `.claude/skills/**` is in the filter because the script resolves every `skills:`
+# entry to a real .claude/skills/<name>/SKILL.md; renaming or deleting a skill
+# directory breaks the agents that preload it.
+#
+# The pnpm install is only there to provide `yaml`: the script reads it from
+# server/node_modules rather than taking a global dependency. It is deliberately
+# NOT a declared dependency of server/ — it resolves because server/.npmrc sets
+# node-linker=hoisted.
+name: governance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude/agents/**'
+      - '.claude/skills/**'
+      - 'scripts/check-agent-frontmatter.mjs'
+      - '.github/workflows/governance.yml'
+  pull_request:
+    paths:
+      - '.claude/agents/**'
+      - '.claude/skills/**'
+      - 'scripts/check-agent-frontmatter.mjs'
+      - '.github/workflows/governance.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-frontmatter:
+    name: agent frontmatter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+
+      - name: Install server deps (for the yaml parser)
+        working-directory: server
+        run: pnpm install --frozen-lockfile
+
+      # Runs from the repo root: the script resolves every path off its own
+      # location, so no cd and no package manager is involved in the check itself.
+      - run: node scripts/check-agent-frontmatter.mjs

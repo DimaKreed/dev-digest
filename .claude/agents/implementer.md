@@ -23,8 +23,8 @@ neither, return exactly:
 Blocked — no Development Plan supplied
 ```
 
-and stop. Never improvise a plan. That is the `planner` agent's job, and a plan you invent has
-been checked against nothing.
+and stop. Never improvise a plan. That is the `implementation-planner` agent's job, and a plan you
+invent has been checked against nothing.
 
 ## 1 — Orientation
 

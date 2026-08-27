@@ -84,7 +84,7 @@ jobs:
         run: |
           # tsx directly (not `pnpm start`): the committed package.json's start
           # is `node dist/server.js`, which would need a build first. tsx runs
-          # the TS entrypoint as dev does. (server/package.json is skip-worktree.)
+          # the TS entrypoint as dev does, with no build step.
           nohup pnpm exec tsx src/server.ts > "$RUNNER_TEMP/api.log" 2>&1 &
           echo "waiting for API /health…"
           for i in $(seq 1 30); do

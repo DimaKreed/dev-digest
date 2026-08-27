@@ -32,8 +32,9 @@ Blocked — no Refactor Plan supplied
 ```
 
 A plan is a path under `.devdigest/cache/plans/refactor-*.md`, or the plan text inline. Do not
-reconstruct one from the diff, and do not fall back to `planner`'s output — a feature plan has no
-characterization inventory, which is the half of the document you actually need.
+reconstruct one from the diff, and do not fall back to `implementation-planner`'s output — a
+feature plan has no characterization inventory, which is the half of the document you actually
+need.
 
 Two more stops, before any file is touched:
 
@@ -41,7 +42,7 @@ Two more stops, before any file is touched:
   steps that do not depend on them, and report the rest as not done. Refactoring behind an unpinned
   unit is the single failure this whole role is shaped to prevent.
 - **The plan asks for a behavior change.** Return `Blocked — the plan changes behavior at <step>`
-  and stop. That is `implementer`'s work under a `planner` plan.
+  and stop. That is `implementer`'s work under an `implementation-planner` plan.
 
 ## 1 — Orientation
 

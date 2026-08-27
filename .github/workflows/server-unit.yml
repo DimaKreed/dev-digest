@@ -1,12 +1,12 @@
 # Server unit suite — Fastify API (@devdigest/api), hermetic tests only.
 #
 # Two jobs:
-#  - typecheck: type-check on Linux only — the platform CI and the exported
-#    agent-runner both run on. We deliberately do NOT matrix over Windows/macOS:
-#    macOS is covered by daily local dev, Windows is not a ship target, and
-#    `@ast-grep/napi` is exact-pinned so its native binary only changes on a
-#    deliberate version bump.
-#  - unit: the ~19 DB-free test files (everything that is NOT `*.it.test.ts`).
+#  - typecheck: type-check + the `pnpm arch` boundary gate, on Linux only — the
+#    platform CI and the exported agent-runner both run on. We deliberately do NOT
+#    matrix over Windows/macOS: macOS is covered by daily local dev, Windows is not
+#    a ship target, and `@ast-grep/napi` is exact-pinned so its native binary only
+#    changes on a deliberate version bump.
+#  - unit: the 26 DB-free test files (everything that is NOT `*.it.test.ts`).
 #    LLM/git/embeddings are mocked via src/adapters/mocks.ts — no Docker.
 #
 # DB-backed tests run in server-integration.yml. reviewer-core/** is in the
@@ -65,6 +65,17 @@ jobs:
 
       - run: pnpm typecheck
 
+      # The architecture gate, in the same job as typecheck because it is the same
+      # class of check: `pnpm arch` is `depcruise src --ignore-known`, so it exits 0
+      # unless the diff adds a violation that is NOT already in
+      # .dependency-cruiser-known-violations.json. It is a gate, not a report —
+      # `pnpm arch:all` would fail on all 27 baselined violations and is for humans.
+      # Costs nothing extra here: dependency-cruiser is a declared server dependency
+      # and this job already installed it. That baseline file is now load-bearing in
+      # CI, which is the point: it only ever shrinks, and regenerating it to make a
+      # failure go away defeats the gate.
+      - run: pnpm arch
+
   unit:
     name: tests
     runs-on: ubuntu-latest
@@ -93,7 +104,9 @@ jobs:
         working-directory: reviewer-core
         run: npm ci
 
-      # Inlined rather than `pnpm test:unit`: server/package.json is
-      # skip-worktree (a local variant), so the committed package.json may
-      # not carry the split scripts. Run vitest directly.
+      # Inlined rather than `pnpm test:unit`: that script does not exist and must
+      # not be added — the unit/integration split lives here, not in
+      # server/package.json, so it cannot be broken by an edit to that file.
+      # (`pnpm test` there is bare `vitest run` and would pull in the DB-backed
+      # files.) See TESTING.md § Conventions.
       - run: pnpm exec vitest run --exclude '**/*.it.test.ts'

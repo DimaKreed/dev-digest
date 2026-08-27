@@ -1,12 +1,12 @@
 ---
 name: feature-workflow
-description: Runs a large change through the subagent chain — brainstorm, planner, implementer, test-writer, architecture-reviewer, security-reviewer, plan-verifier, doc-writer — with a fixed artifact hand-off between stages and a per-run trace under .devdigest/cache/runs/. Use at the start of any change that touches more than one package, more than one ring, a shared contract, or has a real design fork. Also use when the user invokes /feature-workflow or asks to run a feature through the agents, the workflow or the chain. Decides first whether the task earns the chain at all, and says plainly when it does not.
+description: Runs a large change through the subagent chain — spec-creator, brainstorm, implementation-planner, implementer, test-writer, architecture-reviewer, security-reviewer, plan-verifier, doc-writer — with a fixed artifact hand-off between stages and a per-run trace under .devdigest/cache/runs/. Use at the start of any change that touches more than one package, more than one ring, a shared contract, or has a real design fork. Also use when the user invokes /feature-workflow or asks to run a feature through the agents, the workflow or the chain. Decides first whether the task earns the chain at all, and says plainly when it does not.
 argument-hint: "[the change, in a sentence — or 'refactor: <boundary>']"
 ---
 
 # Feature workflow
 
-Twelve agents exist. This is the order they run in, what each one is handed, and what each one
+Thirteen agents exist. This is the order they run in, what each one is handed, and what each one
 leaves behind.
 
 Every agent runs in its own context and sees none of this conversation — **only its final message
@@ -17,7 +17,12 @@ is what the next stage reads.
 
 Run the chain when **any** of these is true:
 
-- It touches **two or more packages** (`server/`, `client/`, `reviewer-core/`, `e2e/`).
+- It touches **two or more packages** (`server/`, `client/`, `reviewer-core/`, `e2e/`, `mcp/`).
+  All five count. `mcp/` is a *client* of the HTTP API rather than a sibling of `server/`, so it
+  shares no source and has no cross-package CI edge — but a change spanning it and any other
+  package still earns the chain, and the missing CI edge is a reason to run the reviewers, not
+  to skip them. Never add that CI edge to compensate; root `CLAUDE.md` § *Cross-module wiring*
+  says the isolation is deliberate.
 - It touches **two or more onion rings** — a route and a repository, a component and an adapter.
 - It changes a **contract** under `vendor/shared/`. Those are duplicated and already diverged;
   every such change is at minimum a two-package change.
@@ -59,57 +64,106 @@ worse than an absent one.
 
 | # | Stage | Agent | Given | Leaves |
 |---|---|---|---|---|
-| 1 | Options | `brainstorm` | the request | `.devdigest/cache/options/<slug>.md` |
-| 2 | Choice | *human* | the shortlist | the chosen option |
-| 3 | Plan | `planner` | request + chosen option | `.devdigest/cache/plans/<slug>.md` |
-| 4 | Approval | *human* | the plan digest | approval |
-| 5a ∥ 5b | Build | `implementer` ∥ `test-writer` | the plan path | code, tests, two reports |
-| 6a ∥ 6b ∥ 6c | Review | `architecture-reviewer` ∥ `security-reviewer` ∥ `plan-verifier` | diff scope (+ the plan for 6c) | three reports |
-| 7 | Document | `doc-writer` | plan + reports + diff | docs |
-| 8 | Close | *main session* | everything | `/engineering-insights`, then `/pr-self-review` |
+| 1 | Spec | `/spec-creator` → `spec-writer` | the request + any design | `<pkg>/specs/NN-*.md` or `specs/NN-*.md`, approved |
+| 2 | Options | `brainstorm` | the request | `.devdigest/cache/options/<slug>.md` |
+| 3 | Choice | *human* | the shortlist | the chosen option |
+| 4 | Plan | `implementation-planner` | spec path + chosen option | `.devdigest/cache/plans/<slug>.md` |
+| 5 | Approval | *human* | the plan digest | approval |
+| 6a ∥ 6b | Build | `implementer` ∥ `test-writer` | the plan path ∥ **the spec path** | code, tests, two reports |
+| 7a ∥ 7b ∥ 7c | Review | `architecture-reviewer` ∥ `security-reviewer` ∥ `plan-verifier` | diff scope (+ the plan **and the spec** for 7c) | three reports |
+| 8 | Document | `doc-writer` | plan + reports + diff | docs |
+| 9 | Close | *main session* | everything | `/engineering-insights`, then `/pr-self-review` |
 
-**Stages 5 and 6 each go out in one message with several tool calls**, or they run in sequence and
+This is the spec-driven order: the requirement is written and agreed **before** anything designs
+against it, and it stays the reference all the way to stage 7c.
+
+**Stages 6 and 7 each go out in one message with several tool calls**, or they run in sequence and
 you pay the wall time for nothing.
 
-### Stage 1 — brainstorm
+### Stage 1 — the spec
+
+Run `/spec-creator`. It decides for itself whether the change earns a spec, interrogates the user
+across the six question groups, analyses any design for gaps and uncovered corner cases, and hands
+`spec-writer` a briefing. The result is a spec file with `AC-NN` acceptance criteria in EARS form.
+
+`No spec needed` back from it is a correct answer for a change with no observable new behavior — a
+refactor being the clean case — and goes in the trace as `skipped` with its reason. The chain then
+runs plan-first, exactly as it used to.
+
+**The spec must reach `Status: approved` before stage 4.** That flip is a human gate owned by the
+skill; `plan-verifier` returns `blocked` if it is handed a `draft`. Do not carry a `draft` forward
+on the grounds that the user seemed happy.
+
+### Stage 2 — brainstorm
 
 Skip it, and say you skipped it, when the approach is genuinely settled — a contract dictates the
 shape, or an `insights.md` entry already decided it. `brainstorm` will return
 `Blocked — no decision to brainstorm` on its own if you send it one of those; that is a correct
 answer, not a failure, and it goes in the trace as `blocked`.
 
-### Stage 2 — the human picks
+### Stage 3 — the human picks
 
 The shortlist goes to the user with the option file path. **Do not pick for them and proceed.**
 This is the one place a wrong turn is cheap to fix and expensive to leave, and the whole reason
-stage 1 returns a shortlist rather than a winner.
+stage 2 returns a shortlist rather than a winner.
 
-### Stage 3 — planner
+### Stage 4 — implementation-planner
 
-Hand it the request **and** the chosen option — the option's mechanism and its files-touched list,
-not just its name. `planner` re-derives everything else itself.
+Hand it the **spec path** and the chosen option — the option's mechanism and its files-touched list,
+not just its name. `implementation-planner` re-derives everything else itself.
 
-A `No plan needed` back from `planner` after stage 0 said "run the chain" is a real signal: one of
-the two gates read the task wrong. Say which you think it was rather than routing around it.
+A `No plan needed` back from `implementation-planner` after stage 0 said "run the chain" is a real
+signal: one of the two gates read the task wrong. Say which you think it was rather than routing
+around it.
 
-### Stage 4 — the human approves
+### Stage 5 — the human approves
 
-`planner` returns a digest designed to be approved without opening the file. An empty
+`implementation-planner` returns a digest designed to be approved without opening the file. An empty
 `Skills loaded while planning` in that digest is a reason to reject the plan — send it back rather
 than passing a blind plan downstream.
 
-### Stage 5 — implementer ∥ test-writer
+**Three things go to the human here, in one `AskUserQuestion`, before anything is approved.** A
+subagent cannot prompt anybody — only its final message comes back — so the digest carries these
+as recommendations and *this stage* is where they become decisions:
 
-Both get the **plan path**, not the plan text, and neither gets the other's output — that is the
-point. `test-writer` runs in spec-first mode from the plan's *done-when* conditions, so its
-assertions derive from the plan rather than from `implementer`'s code.
+1. **The plan itself.** Approve, or send it back with the reason.
+2. **`Open questions`** — each unclear requirement the plan already assumed a default for. The
+   plan is written under those defaults, so "go with the defaults" is a complete reply and costs
+   nothing. Correcting one here is far cheaper than after stage 6.
+3. **`Execution mode`** — the plan's multi-agent / single-agent recommendation. If the human picks
+   **single-agent**, stages 6 and 7 collapse into one ordered main-session pass over the work items:
+   no fresh-context reviewers, so say plainly that nothing graded the work independently, and record
+   the choice in the trace as `single-agent` on the stage rows it replaced.
+
+`Recommendations` in the digest are advisory. Accepting one changes the plan, so it goes back to
+stage 4 rather than being patched into the plan by hand downstream.
+
+### Stage 6 — implementer ∥ test-writer
+
+Neither gets the other's output — that is the point. But they get **different inputs**, and this is
+the pivot of the whole spec-driven order:
+
+- `implementer` gets the **plan path**.
+- `test-writer` gets the **spec path**, and runs spec-first from the `AC-NN` criteria.
+
+Tests derived from the implementation green against a wrong implementation just as happily as
+against a right one; tests derived from the plan are one remove closer but still describe a
+*solution*. Only the spec states the *requirement*. `test-writer` returns a criteria-coverage
+table and a `## Criteria not covered` section — an uncovered criterion there is a real gap and
+goes to the human, not quietly past.
+
+When stage 1 returned `No spec needed`, `test-writer` falls back to the plan's *done-when*
+conditions. Say that you did.
 
 They write to different paths by construction (`test-writer` writes tests only). If both reports
-name the same file, stop and reconcile before stage 6.
+name the same file, stop and reconcile before stage 7.
 
-### Stage 6 — three reviewers, one diff
+### Stage 7 — three reviewers, one diff
 
-All three get the same diff scope; `plan-verifier` also gets the plan path. None of them gets the
+All three get the same diff scope; `plan-verifier` also gets **both** the plan path and the spec
+path, and builds one traceability row per acceptance criterion — `AC → work item → test → commit`.
+A criterion whose `Work item` column reads `none` was agreed, planned around and never built; that
+is the finding nothing else in this chain looks for. None of them gets the
 implementer's report as evidence — `plan-verifier` treats it as a *claim*, and the other two never
 see it. A reviewer that read the reasoning behind the change cannot review it fresh, which is the
 entire reason these three are separate agents.
@@ -118,16 +172,20 @@ Expect and accept negative results. `no onion violations in this diff`, `no expl
 this diff`, and a traceability table that is all `met` are the normal outcome of a good plan
 executed well. Do not send a reviewer back to find something.
 
-**Any `CRITICAL` from 6a or 6b, or any `missing` from 6c, sends the work back to stage 5** with that
-finding as the input — not to a new plan. Re-run stage 6 afterwards; a fix is a diff and gets
-reviewed like one.
+**Any `CRITICAL` from 7a or 7b, or any `missing` from 7c, sends the work back to stage 6** with that
+finding as the input — not to a new plan. Re-run stage 7 afterwards; a fix is a diff and gets
+reviewed like one. A `missing` row whose `Work item` is `none` is the exception: that one goes back
+to **stage 4**, because the gap is in the plan rather than in the code.
 
-### Stage 7 — doc-writer
+Once stage 7c returns with no `missing` row, flip the spec's `Status:` from `approved` to
+`implemented`. That is the only condition under which it moves.
+
+### Stage 8 — doc-writer
 
 Runs when the change added a feature, a decision worth recording, or a measured result. Skip it for
 an internal refactor with no external surface, and say you skipped it.
 
-### Stage 8 — close in the main session
+### Stage 9 — close in the main session
 
 `/engineering-insights` first, then `/pr-self-review`. Both belong to the main session, not to an
 agent: `engineering-insights` appends to files the agents deliberately cannot write, and
@@ -137,13 +195,15 @@ Then append `## Cost` to the run file from `/cost`, session-level.
 
 ## The refactor variant
 
-For a behavior-preserving change, stages 1 and 2 are unchanged and the middle differs:
+For a behavior-preserving change, **stage 1 does not run at all** — a refactor preserves behavior
+by definition, so there is no new requirement to specify, and `/spec-creator` will tell you so
+itself. Stages 2 and 3 are unchanged, and the middle differs:
 
 | # | Stage | Agent | Leaves |
 |---|---|---|---|
-| 3 | Refactor plan | `refactor-planner` | `.devdigest/cache/plans/refactor-<slug>.md` |
-| 5 | Build | `refactor-implementer` **alone** | characterization tests + the refactor |
-| 6 | Review | `architecture-reviewer` ∥ `plan-verifier` | two reports |
+| 4 | Refactor plan | `refactor-planner` | `.devdigest/cache/plans/refactor-<slug>.md` |
+| 6 | Build | `refactor-implementer` **alone** | characterization tests + the refactor |
+| 7 | Review | `architecture-reviewer` ∥ `plan-verifier` | two reports |
 
 `test-writer` is **dropped** — `refactor-implementer` writes the characterization tests itself, and
 two agents writing tests into the same lane collide. `security-reviewer` is optional here and runs
@@ -166,8 +226,11 @@ Not every large task is a feature. Single agents, invoked directly:
 ## Rules
 
 - **State the stage-0 decision out loud** before running anything.
-- **Never skip stage 2 or stage 4.** Both are human gates. An agent chain that approves its own
-  plan has no gate in it at all.
+- **Never skip stage 3 or stage 5, and never carry a `draft` spec past stage 1.** All three are
+  human gates. An agent chain that approves its own spec and its own plan has no gate in it at
+  all. Stage 5 decides three things — the plan, the open questions,
+  and the execution mode — and picking the mode for the user is skipping the gate just as much as
+  approving the plan for them is.
 - **Never hand an agent another agent's context** — only the artifact path it is meant to read.
   Passing a summary instead defeats the fresh-context property the reviewers depend on.
 - **Never re-run an agent to get a different answer.** A negative result is a result. If a report
@@ -175,5 +238,5 @@ Not every large task is a feature. Single agents, invoked directly:
 - **Append to the trace as each stage lands**, including `blocked` stages and skipped ones with a
   reason. A trace with gaps cannot be read afterwards.
 - **Never fabricate per-agent cost.** Session-level from `/cost`, labelled as such.
-- The chain never commits and never opens a PR. Stage 8 ends at `/pr-self-review`; publishing is
+- The chain never commits and never opens a PR. Stage 9 ends at `/pr-self-review`; publishing is
   the user's call.

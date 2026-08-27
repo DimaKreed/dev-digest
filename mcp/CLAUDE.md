@@ -90,5 +90,6 @@ npm run -s start    # stdio server; -s matters, see below
 - [README.md](README.md) — the five tools, the wait loop, the verification probes
 - [../CLAUDE.md](../CLAUDE.md) — cross-package wiring; why this package has no alias
 - [../TESTING.md](../TESTING.md) — suite map and CI lanes
+- [specs/](specs/) — intended behavior of a tool, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`

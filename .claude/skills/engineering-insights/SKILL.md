@@ -1,6 +1,6 @@
 ---
 name: engineering-insights
-description: Reads and appends durable engineering findings to the insights.md of the module a task touched (server, client, reviewer-core, e2e, or the repo root for cross-module findings). Use at the start of work in a module to load prior findings, mid-task when something non-obvious is confirmed, and at the end of any non-trivial session to record what was learned. Also use when the user invokes /engineering-insights or asks to capture, record, prune, or review insights or learnings.
+description: Reads and appends durable engineering findings to the insights.md of the module a task touched (server, client, reviewer-core, e2e, mcp, or the repo root for cross-module findings). Use at the start of work in a module to load prior findings, mid-task when something non-obvious is confirmed, and at the end of any non-trivial session to record what was learned. Also use when the user invokes /engineering-insights or asks to capture, record, prune, or review insights or learnings.
 allowed-tools: Read, Glob, Grep, Edit
 argument-hint: "[optional: module, or the finding to capture]"
 ---
@@ -22,10 +22,17 @@ Three modes:
 | `client/**` | `client/insights.md` |
 | `reviewer-core/**` | `reviewer-core/insights.md` |
 | `e2e/**` | `e2e/insights.md` |
+| `mcp/**` | `mcp/insights.md` |
 | package wiring, shared contracts, CI, `scripts/`, tooling, local setup | `insights.md` (root) |
 
 A finding true of two packages is a cross-module finding — it goes to root, not into both.
 Never mirror an entry across files.
+
+`mcp/` is the routing trap here. It consumes the HTTP API rather than sharing source with
+`server/`, so a finding about *how the API behaves* is a `server/` or a root finding, while a
+finding about *consuming* it — a tolerant response schema, a wait loop, the absent tsconfig
+alias — is `mcp/`. Its lack of a cross-package CI edge is deliberate and is a root finding, not
+an `mcp/` one.
 
 ## Load
 

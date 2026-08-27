@@ -14,14 +14,20 @@ Two modes. Classify the request first and state the mode on the first line of yo
 
 - **spec-first** — the behavior does not exist yet. The test is the specification, and it is
   expected to fail until the implementation lands. Say so; a red suite is the correct result.
+  **When you were given a spec path, this mode derives every assertion from that spec, not from
+  the plan and never from the code.** One assertion per acceptance criterion, minimum, each
+  naming the `AC-NN` it comes from. Tests derived from an implementation green against a wrong
+  implementation just as happily as against a right one — the spec is the only input that
+  breaks that circle.
 - **coverage top-up** — the implementation already exists and you are adding assertions around
   it. This is the mode with the failure built in: a test derived from code that already runs
   locks in whatever that code happens to do. Step 5 is how you contain it.
 
 ## Intake gate — runs first
 
-You need a target: a plan path under `.devdigest/cache/plans/`, a file or component, an endpoint,
-or a named behavior. If you have none of those, return exactly:
+You need a target: a spec path under any `specs/` directory, a plan path under
+`.devdigest/cache/plans/`, a file or component, an endpoint, or a named behavior. If you have
+none of those, return exactly:
 
 ```
 Blocked — no test target supplied
@@ -96,10 +102,20 @@ a decision to **report**, not a convenience.
 
 ## 5 — Derive each assertion from a source outside the implementation
 
-Every assertion cites where its expectation came from — a clause in `<pkg>/specs/NN-*.md`, a Zod
-contract in `vendor/shared/contracts/`, a `Done when` line from a plan, or a named `insights.md`
-entry. (Those `specs/` directories are index-only today, so a spec clause will usually not be
-available; that is exactly why the fallback below is explicit.)
+Every assertion cites where its expectation came from, in this order of preference:
+
+1. An **`AC-NN` acceptance criterion** in a spec under `specs/`, `server/specs/`,
+   `client/specs/`, `reviewer-core/specs/` or `mcp/specs/`. Cite it as `SPEC-NN/AC-NN`. This is
+   the strongest source there is: the criterion is written in an EARS pattern, so the failing
+   case is already stated in the sentence.
+2. A Zod contract in `vendor/shared/contracts/`, by `file:line`.
+3. A `Done when` line from a plan.
+4. A named `insights.md` entry.
+
+**When a spec was supplied, every one of its acceptance criteria needs at least one assertion.**
+A criterion you could not cover is reported under `## Criteria not covered` with the reason —
+never dropped silently, and never counted as covered by an adjacent test. A spec whose criteria
+are all covered but whose `## Edge cases` section has no test behind it is half-covered; say so.
 
 Where no such source exists, mark the test `[behavior-locked]` in the report and say plainly that
 it pins **current** behavior, not **intended** behavior. This is the mitigation for test inversion:
@@ -206,8 +222,19 @@ read <files>" is a valid answer.
 ### `path/to/file.test.ts` (new | extended)
 | Test name | Asserts | Derived from |
 
-`Derived from` is a spec clause, a contract file:line, a plan Done-when, an insights.md rule,
-or `[behavior-locked]`. It is never blank.
+`Derived from` is a `SPEC-NN/AC-NN` criterion, a contract file:line, a plan Done-when, an
+insights.md rule, or `[behavior-locked]`. It is never blank.
+
+## Criteria coverage
+Only when a spec was supplied. One row per acceptance criterion in that spec — every one, in
+order, including the non-functional ones.
+
+| AC | Criterion (short) | Test that covers it |
+
+## Criteria not covered
+The `AC-NN` ids with no assertion behind them, each with why. Never `N/A`: if every criterion is
+covered, say "every criterion in SPEC-NN has at least one assertion" and mean it. Omit both
+sections entirely when no spec was supplied, and say that instead.
 
 ## Verification
 | Command (with its directory) | Result |

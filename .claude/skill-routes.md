@@ -1,8 +1,8 @@
 # Skill routes — task type to skill set
 
 The forward-direction router: **what am I about to build** → **which skills govern it**. Read by
-`planner` (to build a plan that cannot contradict those rules) and by `implementer` (to load them
-before writing code).
+`implementation-planner` (to build a plan that cannot contradict those rules) and by `implementer`
+(to load them before writing code).
 
 This is level 1. Level 2 is [pr-self-review/routing.md](skills/pr-self-review/routing.md), which
 routes by *changed path* rather than by task type.
@@ -27,7 +27,8 @@ column is `backend` + `backend-data`.
 | `mcp` | `mcp/src/**`, `mcp/test/**`, `.mcp.json` | `onion-architecture` · `zod` — the rings apply, but `pnpm arch` does **not** cover this package; its boundaries are grep probes (`mcp/README.md`) |
 | `contracts` | `server/src/vendor/shared/**`, `client/src/vendor/shared/**` | `zod` |
 | `e2e` | `e2e/**` | **no skill exists.** Follow [e2e/CLAUDE.md](../e2e/CLAUDE.md) and `e2e/docs/`, and say in the report that the lane had no skill. Never substitute an adjacent skill to fill the gap |
-| `docs` | any `*.md` under `<pkg>/docs/`, `<pkg>/specs/` or `docs/`, any `README.md`, `TESTING.md` | `mermaid-diagram` · then follow the routing table in [doc-writer.md](agents/doc-writer.md) for **which** directory owns the document |
+| `docs` | any `*.md` under `<pkg>/docs/` or `docs/`, any `README.md`, `TESTING.md` | `mermaid-diagram` · then follow the routing table in [doc-writer.md](agents/doc-writer.md) for **which** directory owns the document |
+| `specs` | any `*.md` under `<pkg>/specs/` or the root `specs/` | `spec-creator` — it owns the EARS form, the global `NN` counter and the `draft → approved` gate, and delegates the writing to [spec-writer.md](agents/spec-writer.md). Do **not** route a spec to `doc-writer`: it documents what was built, a spec states what must be. `e2e/specs/` is not in this lane — those are executable `.flow.json` flows and belong to the `e2e` type |
 | `always` | any item that writes TypeScript | `typescript-expert` — `strict` + `noUncheckedIndexedAccess` are repo-wide, so indexing yields `T \| undefined` everywhere |
 | `conditional` | the item introduces an endpoint, an auth check, a secret, a file upload, or a new path from request input to a query, a shell, or the filesystem | `security` |
 
@@ -59,6 +60,11 @@ matching type is in play.
   both `tsconfig.json` and that package's `vitest.config.ts`.
 - **`always`** — CI is path-filtered per package and cross-package edges are hand-encoded in
   `.github/workflows/`. A new edge means editing the `paths:` filter too.
+- **`specs`** — the `NN` prefix is one counter shared by all five specs directories, so `SPEC-07`
+  identifies one spec repo-wide. The `AC-NN` ids inside are cited by `implementation-planner`
+  (per work item), `test-writer` (per assertion) and `plan-verifier` (one traceability row each):
+  **never renumber a criterion** — supersede the spec instead. `e2e/specs/` is not part of this
+  and holds executable `.flow.json` flows.
 - **Any test hitting a real database** must be named `*.it.test.ts`. The CI lanes split on that
   exact string.
 

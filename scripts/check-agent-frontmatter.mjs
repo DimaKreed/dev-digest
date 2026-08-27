@@ -50,6 +50,10 @@ const READONLY = [
   'security-reviewer',
   'insight-curator',
 ];
+// Agents whose body pins them to exactly one write path. Withholding `Edit` is what
+// makes that pin checkable: an agent that can only create files cannot quietly
+// rewrite something outside its scope.
+const WRITE_SCOPED = ['implementation-planner', 'brainstorm', 'refactor-planner', 'spec-writer'];
 const NOSKILLS = ['plan-verifier'];
 const SKILL_ONLY = ['allowed-tools', 'disable-model-invocation'];
 
@@ -105,6 +109,8 @@ for (const f of readdirSync(agentsDir).filter((n) => n.endsWith('.md') && n !== 
   for (const x of t || []) if (!KNOWN.includes(x)) e.push(`unknown tool ${x}`);
   if (READONLY.includes(stem))
     for (const x of ['Write', 'Edit']) if ((t || []).includes(x)) e.push(`${x} must stay withheld`);
+  if (WRITE_SCOPED.includes(stem) && (t || []).includes('Edit'))
+    e.push('Edit must stay withheld — this agent has a single write path');
   if ('model' in d && !MODELS.includes(d.model)) e.push(`model ${d.model}`);
 
   const head = (e.length ? 'FAIL ' : 'PASS ') + f + preloadNote(d.skills);

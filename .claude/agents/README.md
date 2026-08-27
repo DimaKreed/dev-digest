@@ -11,20 +11,21 @@ This file is a map of the set. The rules live in each agent's own file; don't mi
 | Agent | Role | Model | Writes files? | Returns |
 |---|---|---|---|---|
 | [researcher](researcher.md) | Answers a question — in the repo or outside it | `sonnet` | no | A fixed research report |
+| [spec-writer](spec-writer.md) | Turns a briefing into one spec with EARS criteria | `opus` | one path only | Spec digest + the spec file |
 | [brainstorm](brainstorm.md) | Generates and contrasts approaches before a plan exists | `opus` | one path only | Option set + shortlist |
-| [planner](planner.md) | Turns a request into a Development Plan | `opus` | one path only | Plan digest + the plan file |
+| [implementation-planner](implementation-planner.md) | Reviews the requirements, then turns them into a plan | `opus` | one path only | Plan digest + the plan file |
 | [implementer](implementer.md) | Executes an approved plan | `inherit` | yes | Implementation report |
-| [test-writer](test-writer.md) | Writes tests — spec-first, or coverage top-up | `inherit` | tests only | Test report |
+| [test-writer](test-writer.md) | Writes tests — spec-first from the spec, or coverage top-up | `inherit` | tests only | Test report + criteria coverage |
 | [architecture-reviewer](architecture-reviewer.md) | Audits a diff against the onion rule catalog | `opus` | no | Architecture review |
 | [security-reviewer](security-reviewer.md) | Audits a diff for exploitable defects | `opus` | no | Security review |
-| [plan-verifier](plan-verifier.md) | Checks finished code against the plan, item by item | `opus` | no | Plan verification + traceability |
+| [plan-verifier](plan-verifier.md) | Checks finished code against the spec and the plan, item by item | `opus` | no | Verification + AC traceability |
 | [doc-writer](doc-writer.md) | Turns a plan, a report or a diff into documentation | `inherit` | docs only | Documents + documentation report |
 | [refactor-planner](refactor-planner.md) | Plans a behavior-preserving change, tests first | `opus` | one path only | Refactor plan + characterization inventory |
 | [refactor-implementer](refactor-implementer.md) | Pins behavior, proves green, then restructures | `inherit` | yes | Refactor report + green-before proof |
-| [insight-curator](insight-curator.md) | Reads all five `insights.md` at once and proposes | `sonnet` | no | Curation report |
+| [insight-curator](insight-curator.md) | Reads all six `insights.md` at once and proposes | `sonnet` | no | Curation report |
 
 The reserved slot is now filled. **Security review** was the last one open, and the argument that
-kept it separate is the argument that produced five of these twelve agents: a reviewer in a fresh
+kept it separate is the argument that produced five of these thirteen agents: a reviewer in a fresh
 context sees the diff but not the reasoning that produced it, so no agent grades its own work.
 `architecture-reviewer` owns layering, `security-reviewer` owns exploitability, `plan-verifier`
 owns whether the plan was implemented — three narrow reviewers rather than one that would do all
@@ -32,7 +33,7 @@ three badly.
 
 Two branches share the front of the chain and diverge after the plan. The **feature** branch adds
 behavior; the **refactor** branch preserves it, which is a different enough problem to need its own
-planner and its own implementer — the refactor plan's first half is a characterization-test
+implementation planner and its own implementer — the refactor plan's first half is a characterization-test
 inventory, and its implementer proves those tests green against the *unrefactored* code before it
 touches anything. `insight-curator` sits outside both.
 
@@ -43,6 +44,10 @@ to earn any of this.
 ## How they compose
 
 ```
+spec-writer     what the feature must do, before anything designs how
+                six question groups + design critique → EARS criteria with AC-NN ids
+                → <pkg>/specs/NN-*.md · driven by /spec-creator, which does the asking
+   ↓            (human approves: draft → approved)
 researcher      (optional — external unknowns the plan would otherwise guess at)
    ↓
 brainstorm      4-5 options on named axes, each with a confidence
@@ -51,17 +56,19 @@ brainstorm      4-5 options on named axes, each with a confidence
    ↓            (human picks)
    ├─────────── feature ──────────┬─────────── refactor ───────────┐
    ↓                              │                                ↓
-planner         scope → route →   │                     refactor-planner
-                load skills →     │                     boundary → callers → what is
-                design → conform  │                     observable → inventory → steps
-                reads skill-routes│                     → plans/refactor-<slug>.md
+implementation-planner            │                     refactor-planner
+                scope → route →   │                     boundary → callers → what is
+                load skills →     │                     observable → inventory → steps
+                requirements →    │                     → plans/refactor-<slug>.md
+                design → conform  │
+                reads skill-routes│
                 + routing.md      │
-   ↓            (human approves)  │                                ↓
+   ↓            (approves · mode) │                                ↓
    ├──────────────────────────────┤                     refactor-implementer
    ↓                              ↓                     pin behavior → prove GREEN on the
 test-writer                    implementer              unrefactored code → refactor under
-tests from the plan's          re-derives the same      green, one step at a time
-done-when, before the code     route independently,     (test-writer is dropped here — it
+tests from the spec's AC-NN    re-derives the same      green, one step at a time
+criteria, before the code      route independently,     (test-writer is dropped here — it
 (spec-first) or after it       loads the union,          writes its own characterization
 (coverage top-up)              executes, verifies        tests, and two writers collide)
    └──────────────────────────────┤                                │
@@ -69,27 +76,27 @@ done-when, before the code     route independently,     (test-writer is dropped 
         ┌─────────────────────────┼─────────────────────────┐
         ↓                         ↓                         ↓
 architecture-reviewer       plan-verifier            security-reviewer
-onion catalog · two-pass    every plan item →        five categories · refute each
-recall/precision · every    evidence → one of        candidate · taint path + exploit
-finding carries a rule id   four verdicts, never     or it is not a finding · ≥0.8
-        │                   N/A                      confidence gate
+onion catalog · two-pass    AC → work item →         five categories · refute each
+recall/precision · every    test → commit, one row   candidate · taint path + exploit
+finding carries a rule id   per criterion · four     or it is not a finding · ≥0.8
+        │                   verdicts, never N/A      confidence gate
         └─────────────────────────┼─────────────────────────┘
                                   ↓
 doc-writer      plan + report + diff → <pkg>/docs · <pkg>/specs · README · docs/experiments
                                   ↓
 main session    /engineering-insights, then /pr-self-review
 
-insight-curator  outside the chain — reads all five insights.md together and proposes
+insight-curator  outside the chain — reads all six insights.md together and proposes
                  what to merge, reroute, promote or retire. Never writes one.
 ```
 
 [`/feature-workflow`](../skills/feature-workflow/SKILL.md) is this diagram as an executable
-procedure — the stage order, what each agent is handed, the two human gates, and the per-run trace
+procedure — the stage order, what each agent is handed, the three human gates, and the per-run trace
 under `.devdigest/cache/runs/`. It also carries the gate that keeps the chain off small work: a
 one-file change costs several fresh contexts here and buys nothing.
 
-The two independent route derivations are the safety net: if the planner skipped its skill-loading
-step, the implementer's route won't match the plan's, and the mismatch lands in its `Deviations`.
+The two independent route derivations are the safety net: if `implementation-planner` skipped its
+skill-loading step, the implementer's route won't match the plan's, and the mismatch lands in its `Deviations`.
 
 Every reviewer's negative result is a real result. `no onion violations in this diff`, `no
 exploitable findings in this diff` and an all-`met` traceability table are what a good plan executed
@@ -112,6 +119,44 @@ is never "N/A" — a silent gap is the failure the format exists to prevent.
 
 ---
 
+## spec-writer
+
+**Responsibility.** Write one specification file from a briefing, with every acceptance criterion
+in one of the five EARS patterns and a stable `AC-NN` id. Never edits a spec; a spec that needs
+replacing gets a new number and a `Supersedes:` line. Never answers a question the briefing left
+open — that goes to `## Open questions`, because a confident invention here propagates into the
+plan, the tests and the verification matrix before anyone notices.
+
+**Why it is an agent and not just the skill.** The interrogation cannot happen in an agent —
+`AskUserQuestion` is unavailable to a subagent, which can only return a final message. So the
+asking, the Figma reading and the design critique live in
+[`/spec-creator`](../skills/spec-creator/SKILL.md) in the main session, and only the *writing* is
+delegated. That split also settles the tool question: the `tools:` allowlist in the validator holds
+no `mcp__*` names, so an agent could not declare the Figma tools even if it wanted them.
+
+**Permissions.** `Read, Grep, Glob, Write, Skill` · `model: opus` · no `skills:` key. No `Bash`
+and **no `Edit`** — it creates one new file and cannot rewrite anything, which is what makes its
+single write path checkable rather than merely stated. It is in the validator's `WRITE_SCOPED` set.
+
+**One write path**, one of `specs/NN-name.md`, `server/specs/NN-name.md`,
+`client/specs/NN-name.md`, `reviewer-core/specs/NN-name.md` or `mcp/specs/NN-name.md`. Never
+`e2e/specs/` — that holds executable `.flow.json` flows and has no `## Index`. The `NN` counter is
+**global across all five directories**, so `SPEC-07` identifies one spec repo-wide: the directory
+carries the scope, the number carries the identity, and `Supersedes:` needs no qualification.
+
+**In.** A briefing path under `.devdigest/cache/specs/`. Nothing else — it returns
+`Blocked — no briefing supplied` rather than reconstructing one, because a reconstructed briefing
+is a guess about what the user wanted.
+**Out.** A digest carrying the spec path, the criterion count by pattern, the Index line the caller
+must add, and a mandatory `## Not specified` section that is never "N/A".
+
+**Why the ids matter.** `implementation-planner` cites `AC-NN` per work item, `test-writer` names
+one per assertion, and `plan-verifier` builds one traceability row per criterion — `AC → work item
+→ test → commit`. Renumbering a criterion breaks all three at once, which is why a revision
+supersedes rather than edits.
+
+---
+
 ## brainstorm
 
 **Responsibility.** Generate options and contrast them; never choose, never design. Finds the
@@ -123,7 +168,7 @@ differ by wording rather than by structure. Returns a ranked shortlist, not a wi
 **Permissions.** `Read, Grep, Glob, Bash, Skill, Write` · `model: opus` · no `skills:` key.
 
 - `Write` is scoped by the body to **one path**: `.devdigest/cache/options/<slug>.md`, the same
-  single-path discipline `planner` uses, and the same gitignored directory.
+  single-path discipline `implementation-planner` uses, and the same gitignored directory.
 - No preloaded skills, deliberately. Placement rules would bias the set toward the placement those
   rules already prefer, which is the opposite of this agent's job. It loads a skill at runtime only
   when an option's *viability* turns on a rule.
@@ -144,11 +189,20 @@ the first and the longest option get read as the best one, so ranking is confine
 
 ---
 
-## planner
+## implementation-planner
 
 **Responsibility.** Produce a plan another agent can execute without guessing: right ring, right
-package manager, right skills, right verification command, nothing silently skipped. Never writes
-code. Stops with `No plan needed` when the change fits in one sentence and one file.
+package manager, right skills, right verification command, nothing silently skipped. It plans
+**how**, never *why* — the plan points at its requirements source rather than restating it. Never
+writes code. Stops with `No plan needed` when the change fits in one sentence and one file.
+
+It also reviews the requirements it was handed. Pass 3 marks each decision *clear* or *unclear*,
+where unclear means two reasonable implementers would touch **different files**, and gives every
+unclear item a proposed default. The plan is then written **under those defaults** rather than
+withheld: a subagent that stops on the first ambiguity has spent a whole fresh context and returned
+nothing, while a wrong default is one cheap correction at the stage-4 gate. Recommendations are
+held to the same evidence bar as findings elsewhere here — one that cannot name the rule,
+`insights.md` entry or `file:line` behind it is an opinion and gets dropped.
 
 **Permissions.** `Read, Grep, Glob, Bash, Skill, Write` · `model: opus` ·
 `skills: onion-architecture, frontend-ui-architecture` preloaded.
@@ -163,9 +217,18 @@ code. Stops with `No plan needed` when the change fits in one sentence and one f
 `TESTING.md`, [`.claude/skill-routes.md`](../skill-routes.md) and
 [`routing.md`](../skills/pr-self-review/routing.md) / `invariants.md`.
 
-**Out.** `.devdigest/cache/plans/<slug>.md` — scope, prior findings, routing, work items with a
-*done-when*, a conformance table, a wiring checklist, verification commands. Plus a standalone
-digest as the final message, so the plan can be approved without opening the file.
+**Out.** `.devdigest/cache/plans/<slug>.md` — a requirements pointer and review, scope, prior
+findings, routing, work items with a *done-when*, a conformance table, a wiring checklist,
+verification commands, and an execution-mode recommendation. Plus a standalone digest as the final
+message, so the plan can be approved without opening the file.
+
+Two of those outputs are **questions, not conclusions**, and neither is the agent's to settle. A
+subagent cannot prompt anybody — only its final message returns, and no agent here holds
+`AskUserQuestion` — so `Open questions` and `Execution mode` travel in the digest as
+recommendations carrying defaults, in the same shape `researcher` and `doc-writer` use, and
+[`/feature-workflow`](../skills/feature-workflow/SKILL.md) § *Stage 4* is where the human turns them
+into decisions. The execution-mode recommendation is derived from that skill's five stage-0 triggers
+rather than from criteria of its own, so the two cannot drift apart.
 
 ---
 
@@ -367,7 +430,8 @@ steps, each carrying an explicit claim about what must be identical afterwards. 
 `skills: onion-architecture` preloaded — most refactors here are placement moves.
 
 - `Write` is scoped to `.devdigest/cache/plans/refactor-<slug>.md`. The prefix is load-bearing: it
-  shares a directory with `planner`'s output so `plan-verifier` consumes either with no new path.
+  shares a directory with `implementation-planner`'s output so `plan-verifier` consumes either with
+  no new path.
 - Withheld: `Edit`, `WebSearch`/`WebFetch`, `TodoWrite`, `PowerShell`, `Agent`.
 
 **In.** A boundary — a file set, a module, a symbol, or a named duplication.
@@ -403,8 +467,8 @@ nothing and produces an identical-looking report.
   `insights.md`, never regenerates the dependency-cruiser baseline — a refactor that would grow that
   baseline is going the wrong way.
 
-**In.** A path under `.devdigest/cache/plans/refactor-*.md`. It refuses `planner`'s output: a feature
-plan has no characterization inventory, which is the half it actually needs.
+**In.** A path under `.devdigest/cache/plans/refactor-*.md`. It refuses `implementation-planner`'s
+output: a feature plan has no characterization inventory, which is the half it actually needs.
 **Out.** Refactor report, built around a `### Green before the refactor` block of verbatim runner
 output that is never summarized and never omitted.
 
@@ -424,7 +488,7 @@ report as the defect.
 
 ## insight-curator
 
-**Responsibility.** Read all five `insights.md` at once — which no other agent and no ordinary
+**Responsibility.** Read all six `insights.md` at once — which no other agent and no ordinary
 session does — and report what should change about them: duplicates across files, entries filed in
 the wrong module, entries stable enough to be promoted into a `SKILL.md`, a doc or a `CLAUDE.md`
 bullet, and entries the code now contradicts. `## Nothing to do` is a valid report, with a caveat in
@@ -453,7 +517,8 @@ staleness.
 
 ## Skill routing
 
-Both `planner` and `implementer` derive their skill set from two files, independently:
+Both `implementation-planner` and `implementer` derive their skill set from two files,
+independently:
 
 | Level | File | Keys off | Use when |
 |---|---|---|---|
@@ -473,6 +538,11 @@ coverage. The two answers are a pointer in [`skill-routes.md`](../skill-routes.m
 is wrong* back to *Authoring a new agent* below, and the `agent-frontmatter-invalid` invariant in
 [`invariants.md`](../skills/pr-self-review/invariants.md).
 
+Spec work routes through neither router either — a spec is Markdown, and the `docs` type in
+`skill-routes.md` covers `<pkg>/specs/`. The distinction that matters there is ownership rather
+than routing: `spec-writer` owns files under any `specs/`, `doc-writer` owns everything under
+`docs/`. Both can reach a `specs/` path in principle; only `spec-writer` writes one.
+
 `test-writer` derives its lane from neither router. The five lanes, their directories and their
 runners come from [`TESTING.md`](../../TESTING.md) § *Suite map* — the only place the CI split
 between the unit and integration suites is actually written down.
@@ -488,7 +558,7 @@ between the unit and integration suites is actually written down.
 | [Create custom subagents](https://code.claude.com/docs/en/sub-agents) | The frontmatter field set; omitting `tools` inherits everything, so both use explicit allowlists; a subagent inherits no skills from its parent and needs `Skill` in `tools` to load any; `skills:` preloads full `SKILL.md` bodies; only the final message returns |
 | [Best practices for Claude Code](https://code.claude.com/docs/en/best-practices) | "If you could describe the diff in one sentence, skip the plan" → the scope gate. Spec-to-file then a clean context → the plan-file handoff. The adversarial review step → review stays outside the implementer. The named failure patterns (kitchen-sink session, trust-then-verify gap, unscoped exploration) → the scope, intake and verification gates |
 | [Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) | Third-person descriptions; feedback loops → the conformance pass and the verification table; copyable checklists → the wiring checklist; references one level deep; no backslash paths; a default rather than a menu of choices |
-| [Model configuration](https://code.claude.com/docs/en/model-config) · [model and effort](https://claude.com/blog/claude-model-and-effort-level-in-claude-code) | `model` defaults to `inherit`; the model lever goes to the planner (judgement over full context), the effort lever to the implementer (one item at a time, verification it cannot skip). Same lever on the reviewers: `opus` where the work is judgement, `inherit` where it is volume against rules already loaded |
+| [Model configuration](https://code.claude.com/docs/en/model-config) · [model and effort](https://claude.com/blog/claude-model-and-effort-level-in-claude-code) | `model` defaults to `inherit`; the model lever goes to the implementation planner (judgement over full context), the effort lever to the implementer (one item at a time, verification it cannot skip). Same lever on the reviewers: `opus` where the work is judgement, `inherit` where it is volume against rules already loaded |
 | [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) | Sectioning — "LLMs generally perform better when each consideration is handled by a separate LLM call" → four narrow agents rather than one "reviewer". Guardrails by separation — "one model instance processes… while another screens… tends to perform better than having the same LLM call handle both" → why `architecture-reviewer` and `plan-verifier` have no `Write` |
 | [Writing effective tools for AI agents](https://www.anthropic.com/engineering/writing-tools-for-agents) | Describe it to a new team member; make implicit context explicit → repo facts live inside each agent body (package managers, i18n depths, the RTL overrides) rather than behind a link. Precise description refinements measurably cut error rates → every `description` says when to use it, what it returns and what it never does |
 | [Diátaxis](https://diataxis.fr/) | The tutorial / how-to / reference / explanation split, mapped onto this repo's real folders in `doc-writer` — including the explicit statement that `<pkg>/specs/` has **no** Diátaxis quadrant and must not be renamed into one to fit |
@@ -520,7 +590,7 @@ between the unit and integration suites is actually written down.
 | Root `insights.md` | Package-manager discipline governs `exec`, not just install; a skill can confidently describe a codebase this repo does not have, so `insights.md` wins on conflict; agent-file authoring traps |
 | [`pr-gate.ps1`](../hooks/pr-gate.ps1) + `.gitignore` | Why the implementer never touches `gh pr *` or `DEVDIGEST_PR_GATE`, and why plans live under `.devdigest/cache/` |
 | `TESTING.md` + `server/CLAUDE.md` | The `*.it.test.ts` suffix rule and the per-package verification commands |
-| [`planner.md`](planner.md) (the plan template, `:112-174`) + [`implementer.md`](implementer.md) (its report template) | Fixed section names, so `plan-verifier` extracts items mechanically rather than by reading prose; and the implementer's `Deviations` / `Not done`, which are reconciled against, never re-opened |
+| [`implementation-planner.md`](implementation-planner.md) (the plan template, `:132-218`) + [`implementer.md`](implementer.md) (its report template) | Fixed section names, so `plan-verifier` extracts items mechanically rather than by reading prose; and the implementer's `Deviations` / `Not done`, which are reconciled against, never re-opened |
 | [`onion-architecture/SKILL.md`](../skills/onion-architecture/SKILL.md) | The rule catalog `architecture-reviewer` cites by id, its six grep probes, the audit procedure and finding-line format, "a clean diff is a valid and common result", the `vi.mock` ban and the container test seam, and the 27-row known-debt table it must not re-report |
 | [`pr-review-scope.ps1`](../hooks/pr-review-scope.ps1) (`:31`) | Only `insights.md` is excluded from the scope fingerprint, so `.claude/agents/*.md` **is** in the PR gate's scope while no `routing.md` lane covers it — the whole reason the `agent-frontmatter-invalid` invariant exists |
 | [`skill-routes.md`](../skill-routes.md) + `skills-lock.json` | Level 1 of the router, which now carries a `docs` type and the `.claude/**` note; and that neither `pr-self-review` nor `react-testing-library` is locked, so both are hand-authored and legitimately edited in place |
@@ -565,7 +635,8 @@ Per agent file it asserts: the frontmatter parses as YAML; `name` equals the fil
 an array; `skills`, if present, is an array — and `plan-verifier` omits the key entirely; every
 `skills` entry resolves to a real `.claude/skills/<name>/SKILL.md`; no Skill-only key
 (`allowed-tools`, `disable-model-invocation`) is present; every tool name is known, and neither
-`Write` nor `Edit` appears in any agent in the `READONLY` set below; and `model`, if present,
+`Write` nor `Edit` appears in any agent in the `READONLY` set below; `Edit` does not appear in
+any agent in the `WRITE_SCOPED` set; and `model`, if present,
 is one of `opus | sonnet | haiku | inherit`. It also prints each agent's preloaded `SKILL.md` byte
 total and flags anything over 25 KB — advisory only, that never changes the exit code.
 
