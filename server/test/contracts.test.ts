@@ -255,6 +255,19 @@ describe('AI contracts parse fixtures', () => {
     expect(PromptAssembly.parse(assembly).intent).toBeUndefined();
   });
 
+  // `onboarding.json` is a jsonb document too, so a tour generated before the sha,
+  // dropped-link count, model-failure flag and hotness flag existed carries none of
+  // those keys. All four are `nullish`, not `nullable`, or reading an older tour throws.
+  it('Onboarding accepts a legacy document with none of the four tour fields', () => {
+    const legacy = { sections: [] };
+    expect(() => Onboarding.parse(legacy)).not.toThrow();
+    const parsed = Onboarding.parse(legacy);
+    expect(parsed.sha).toBeUndefined();
+    expect(parsed.dropped_links).toBeUndefined();
+    expect(parsed.generated_without_model).toBeUndefined();
+    expect(parsed.hotness_available).toBeUndefined();
+  });
+
   // Findings round-trip through run_traces.trace AND through persisted rows
   // written before out_of_scope existed — same reason, same fix.
   it('Finding accepts a legacy document with no out_of_scope / scope_rationale', () => {
