@@ -100,3 +100,7 @@ memory, skills, compose) are **intentional scaffolding, not dead code**. Never c
   Generator: five fixed sections per repo from deterministic repo-intel facts plus one structured
   model call, with link verification and an honest banner when the index, the key or the commit
   does not match
+- [specs/03-pr-brief-card.md](specs/03-pr-brief-card.md) — SPEC-03, PR Brief: one structured model
+  call per PR state over intent, blast, diff stats, the linked issue and attached specs, cached on
+  head sha plus model, rendered on the Overview tab with grounded risks and a clickable review
+  focus list

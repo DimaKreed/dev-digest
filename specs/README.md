@@ -35,3 +35,4 @@ not a sibling of this directory — it holds the executable `.flow.json` flows, 
 
 - [Project Context — attach repository markdown documents to agents and skills](./01-project-context-documents.md) — hand-picked repo markdown injected into every run's `## Project context` block, with a trace that names what was read
 - [Onboarding Generator — per-repo 5-section onboarding tour](./02-onboarding-generator.md) — five fixed sections generated on request, verified links, an honest banner when the index, the key or the commit does not match
+- [PR Brief — a generated merge-risk brief on the pull request Overview tab](./03-pr-brief-card.md) — one model call per PR state, cached on head sha plus model, with grounded risks, a clickable review-focus list and an honest list of every input that was missing, degraded or dropped
