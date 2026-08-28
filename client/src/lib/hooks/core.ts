@@ -16,6 +16,7 @@ import type {
   PrMeta,
   PrDetail,
   SpecFile,
+  ContextSearchRoot,
   IndexStatus,
 } from "../types";
 
@@ -125,6 +126,37 @@ export function useContextFiles(repoId: string | null | undefined) {
     queryKey: ["context", repoId],
     queryFn: () => api.get<SpecFile[]>(`/repos/${repoId}/context`),
     enabled: !!repoId,
+  });
+}
+
+/**
+ * Which directories the server searched for documents. The empty state names
+ * them, so it must be TOLD them — an operator who reconfigures the roots would
+ * otherwise read an empty state naming directories that were never looked at.
+ */
+export function useContextSearchRoots(repoId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["context-roots", repoId],
+    queryFn: () => api.get<ContextSearchRoot[]>(`/repos/${repoId}/context/roots`),
+    enabled: !!repoId,
+  });
+}
+
+/**
+ * One document's markdown, read-only. The server refuses any path it did not
+ * itself discover, so this cannot be pointed at an arbitrary file.
+ */
+export function useContextFile(
+  repoId: string | null | undefined,
+  path: string | null | undefined,
+) {
+  return useQuery({
+    queryKey: ["context-file", repoId, path],
+    queryFn: () =>
+      api.get<SpecFile>(
+        `/repos/${repoId}/context/file?path=${encodeURIComponent(path!)}`,
+      ),
+    enabled: !!repoId && !!path,
   });
 }
 

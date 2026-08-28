@@ -20,6 +20,22 @@ names and formatting the lesson expects. Two traps: the removals span BOTH `vend
 and one of them dropped a DB column, so restoring needs a NEW migration, not a revert.
 _2026-07-30_
 
+**Counterpart — the feature may be pre-wired FORWARD rather than stripped, and `git log` will not
+show it.** Project Context looked like greenfield work. It was not: `## Project context` was already
+a live section in `reviewer-core/src/prompt.ts:150` fed by `ReviewInput.specs?: string[]`,
+`PromptAssembly.specs` and `RunTrace.specs_read` already existed in **both** `vendor/shared` copies,
+and the trace drawer already rendered both. Only the producer was missing —
+`server/src/modules/reviews/run-executor.ts` never passed `specs` and hardcoded `specs_read: []`.
+Unlike the parent entry's case there is no removal commit to read: `git log -S "Project context" --
+reviewer-core/src/prompt.ts` returns only the initial squashed snapshot, so history is silent.
+**Rule:** before designing an L01–L08 feature, read the engine's input type
+(`reviewer-core/src/review/run.ts` `ReviewInput`) and the trace contract end to end, not just the
+module you expect to edit. A dormant slot changes the work from "add a section" to "fill a seam" —
+and it is what makes a byte-identical-when-empty criterion writable at all, because the omit-when-
+empty spread already exists.
+_2026-08-27_
+
+
 ### Running a review tool on its own uncommitted diff finds what the test suite structurally cannot
 **Symptom:** `devdigest review` was green on 83 hermetic tests and a manual `--help`. Run
 against its own working tree it immediately reported a CRITICAL: `mcp/package.json` declared
@@ -413,3 +429,14 @@ shells out to fastlist for Windows process enumeration — so a command that lis
 processes may still trip it. If a second Device Guard block ever names `fastlist`, that is the
 source, not pnpm itself.
 _2026-08-03_
+
+### Three run-trace fields are persisted but never rendered — is the drawer or the contract wrong?
+`RunTrace.context_docs`, `RunTrace.context_skipped` (`server/src/vendor/shared/contracts/trace.ts:122,127`)
+and `PromptAssembly.specs_tokens` (`:53`) are written on both the success and the failure path, and
+mirrored in the client copy — but `TraceBody.tsx` reads only `trace.specs_read` (`:41,:44`). So
+SPEC-01's per-document token sizes and its skip reasons reach a human only from the raw trace JSON
+or as run-log lines, which is thinner than the criteria that motivated them intended.
+Either the drawer gains three rows, or the contract is carrying data nobody consumes. Worth deciding
+before a fourth field is added on the same assumption. Surfaced by `doc-writer` while writing
+`server/docs/project-context.md`.
+_2026-08-27_

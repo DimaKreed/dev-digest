@@ -8,6 +8,7 @@ import { ConfigTab } from "./_components/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab";
 import { StatsTab } from "./_components/StatsTab";
 import { VersionsTab } from "./_components/VersionsTab";
+import { ContextTab } from "./_components/ContextTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
@@ -33,7 +34,8 @@ export function SkillEditor({
         {tab === "preview" && <PreviewTab skill={skill} />}
         {tab === "stats" && <StatsTab skill={skill} />}
         {tab === "versions" && <VersionsTab skill={skill} />}
-        {tab !== "preview" && tab !== "stats" && tab !== "versions" && (
+        {tab === "context" && <ContextTab skill={skill} />}
+        {tab !== "preview" && tab !== "stats" && tab !== "versions" && tab !== "context" && (
           <ConfigTab skill={skill} />
         )}
       </div>

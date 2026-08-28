@@ -71,6 +71,22 @@ there's no child to delegate to, defer with `requestAnimationFrame` (the fix now
 re-fire, and a URL param that doesn't change won't do it on its own.
 _2026-07-30_
 
+
+### A case-insensitive-looking regex matcher can pass only because i18n upper-cased the other cell
+**Symptom:** `getByText(/spec/)` asserted a document's type badge and passed for a year's worth of
+runs — but only because the badge came from an i18n key rendering `SPEC` in caps, so the
+case-sensitive regex matched the *directory* cell alone. The moment the badge became raw data
+(`specs`), the same query threw `Found multiple elements with the text: /spec/`, because a
+top-level document legitimately shows the same string in the directory column and the type column.
+The test had never asserted what its name claimed.
+**Rule:** when two columns can hold the same string, do not reach for `getByTestId` or a scoped
+`within()` — both restore green while leaving the columns indistinguishable, so the test would pass
+against an implementation that badged the wrong value. Change the **fixture** so the two values
+differ: a document at `specs/api/public.md` has `dir` `specs/api` and a badge of `specs`, and exact
+`getByText("specs/api")` / `getByText("specs")` then assert the relationship instead of coinciding
+with it. `src/app/repos/[repoId]/context/_components/ContextView/ContextView.test.tsx`
+_2026-08-27_
+
 ## Codebase Patterns
 
 ### Run-level data reaches the review-run header by joining on `run_id` in FindingsTab — not by extending `ReviewRecord`

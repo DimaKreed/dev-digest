@@ -1,6 +1,7 @@
 import { pgTable, uuid, text, integer, boolean, jsonb, primaryKey } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces } from './core';
+import { repos } from './repos';
 
 export const skills = pgTable('skills', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -41,4 +42,30 @@ export const skillVersions = pgTable(
     createdAt: now(),
   },
   (t) => ({ pk: primaryKey({ columns: [t.skillId, t.version] }) }),
+);
+
+/**
+ * Repository markdown documents attached to a skill, in injection order.
+ *
+ * Same shape and same identity rule as `agent_context_files`: (skill, repo,
+ * path), paths only, read fresh from the clone at run time. A skill's documents
+ * are injected after the agent's own, in the agent's skill order, when the
+ * linked skill is enabled.
+ */
+export const skillContextFiles = pgTable(
+  'skill_context_files',
+  {
+    skillId: uuid('skill_id')
+      .notNull()
+      .references(() => skills.id, { onDelete: 'cascade' }),
+    repoId: uuid('repo_id')
+      .notNull()
+      .references(() => repos.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    order: integer('order').notNull().default(0),
+    createdAt: now(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.skillId, t.repoId, t.path] }),
+  }),
 );

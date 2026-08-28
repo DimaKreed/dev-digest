@@ -46,6 +46,11 @@ export const PromptAssembly = z.object({
   skills_tokens: z.number().int().nullish(),
   memory: z.string().nullish(),
   specs: z.string().nullish(),
+  /** Tokens the `## Project context` block added; null when no document was
+      injected. `nullish` for the same reason as `skills_tokens` above, and
+      counted server-side because the tokenizer is an adapter and reviewer-core
+      is pure. */
+  specs_tokens: z.number().int().nullish(),
   /** Callers-of-changed-symbols digest (repo-intel); null when absent. */
   callers: z.string().nullish(),
   /** Repo skeleton / map (repo-intel); null when absent. */
@@ -108,7 +113,24 @@ export const RunTrace = z.object({
   tool_calls: z.array(ToolCall),
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),
+  /** Paths of the project-context documents injected, in injection order. */
   specs_read: z.array(z.string()),
+  /** Every document READ, with its token size. `nullish`: this whole document
+      round-trips through the `run_traces.trace` jsonb, and a trace written
+      before the key existed simply omits it. */
+  context_docs: z
+    .array(z.object({ path: z.string(), tokens: z.number().int() }))
+    .nullish(),
+  /** Every attached path that could NOT be read, with why. A skipped document
+      is named, never dropped silently. */
+  context_skipped: z
+    .array(
+      z.object({
+        path: z.string(),
+        reason: z.enum(['missing', 'unreadable', 'escapes']),
+      }),
+    )
+    .nullish(),
   log: z.array(RunLogLine),
 });
 export type RunTrace = z.infer<typeof RunTrace>;

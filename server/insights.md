@@ -166,6 +166,20 @@ arriving through `Container`. Reviewed and ruled compliant, not merely tolerated
 `src/modules/smart-diff/ports.ts:51` · `src/modules/smart-diff/routes.ts:24`
 _2026-08-08_
 
+
+### Config normalisation in `platform/config.ts` does not validate containment — the adapter does, so a bad root fails per-request, not at boot
+**Symptom:** `DEVDIGEST_CONTEXT_ROOTS=../..` is accepted by `parseContextRoots`
+(`server/src/platform/config.ts:75-81`): it trims, strips a leading `./` and trailing slashes, and
+drops empties — but nothing rejects a `..` segment or an absolute path. The server boots clean and
+the misconfiguration surfaces later as a 500 on `GET /repos/:id/context`, thrown by
+`SimpleGitClient.listFiles`'s `path escapes the repo clone` guard.
+**Rule:** this is the house split, not an oversight — `config.ts` normalises shape, adapters own
+containment, and the guard is deliberately the single enforcement point so it cannot exist twice.
+So when adding a path-shaped env var, do **not** add a second containment check in `config.ts`;
+instead expect the failure at first use and say so in `.env.example`. If you want it to fail at boot
+you are adding a *new* rule, and it belongs next to the adapter's guard rather than duplicating it.
+_2026-08-27_
+
 ## Tool & Library Notes
 
 ### dependency-cruiser hides `import type` unless `tsPreCompilationDeps` is on, and that is how DI calls go unresolved
@@ -206,6 +220,22 @@ in TypeScript. Widening one is a no-migration, three-file edit: the `enum:` arra
 converse is the trap — *narrowing* one also generates no migration, so rows keep values the types
 now claim are impossible, and the next `Zod.parse` on read throws on real data.
 _2026-08-03_
+
+
+### Windows refuses unprivileged FILE symlinks but allows directory junctions — gate the case, never absorb it
+**Symptom:** a containment test that must prove a symlink pointing outside the clone is neither read
+nor listed cannot create its fixture: `symlink(target, link)` fails `EPERM` on this box, while
+`symlink(dir, link, 'junction')` succeeds. The tempting repair is to fold the two cases into one
+assertion — `expect(fileLinked || dirLinked).toBe(true)` — which turns a case that never executed
+into a green tick.
+**Rule:** probe the capability once at module scope and gate with `canFileSymlink ? it : it.skip`
+plus a `console.warn`, so the runner prints `[adapters] file symlinks unavailable (EPERM) — the
+symlinked-FILE case is SKIPPED` and the skip is visible in the lane summary. Keep the
+directory-junction case separate and unconditional — it exercises the same
+`if (entry.isSymbolicLink()) continue;` guard, which does not branch on file-vs-directory, so local
+coverage stays real while the file case runs on Linux CI. `server/test/adapters.test.ts:114-135`
+(the gate) and `:265-268` (the junction fixture, which is a plain symlink on Linux).
+_2026-08-27_
 
 ## Recurring Errors & Fixes
 

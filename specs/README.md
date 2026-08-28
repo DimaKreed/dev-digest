@@ -33,4 +33,4 @@ not a sibling of this directory — it holds the executable `.flow.json` flows, 
 
 ## Index
 
-_Empty. Add a link here when you add a spec._
+- [Project Context — attach repository markdown documents to agents and skills](./01-project-context-documents.md) — hand-picked repo markdown injected into every run's `## Project context` block, with a trace that names what was read

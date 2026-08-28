@@ -22,6 +22,8 @@ import type {
   UnifiedDiff,
   BlameLine,
   GitCommit,
+  ListFilesOptions,
+  RepoFileEntry,
   CodeIndex,
   CodeMatch,
   CodeSymbol,
@@ -293,10 +295,61 @@ export class MockGitClient implements GitClient {
   async log(): Promise<GitCommit[]> {
     return [{ sha: 'a1b2c3d4', message: 'init', author: 'marisa.koch', date: '2026-06-01' }];
   }
+  /**
+   * With no `files` map the mock answers every read with `''` (the historical
+   * behavior every other suite relies on). WITH a map, an absent path THROWS,
+   * the way the real adapter's ENOENT does — a test that attaches a document
+   * and then deletes it needs the failure, not an empty string.
+   */
   async readFile(_repo: RepoRef, path: string): Promise<string> {
-    return this.opts.files?.[path] ?? '';
+    if (!this.opts.files) return '';
+    const text = this.opts.files[path];
+    if (text === undefined) throw new Error(`ENOENT: no such file in mock clone: ${path}`);
+    return text;
+  }
+
+  /**
+   * Derived from the same `files` map that serves `readFile`.
+   *
+   * The map is flat, so a NESTED REPOSITORY is expressed the way it appears on
+   * disk: some path under `<dir>/.git/`. Any such `<dir>` below the top level
+   * is treated as a nested checkout and everything beneath it disappears, which
+   * is what lets AC-42.3 be exercised through the container seam instead of
+   * only against a real filesystem. A top-level `.git/...` is the clone's own
+   * and is exempt.
+   */
+  async listFiles(_repo: RepoRef, opts: ListFilesOptions): Promise<RepoFileEntry[]> {
+    const prefix = opts.root === '.' || opts.root === '' ? '' : `${opts.root.replace(/\/+$/, '')}/`;
+    const nested: string[] = [];
+    if (opts.skipNestedRepos) {
+      for (const path of Object.keys(this.opts.files ?? {})) {
+        const segments = path.split('/');
+        const at = segments.indexOf('.git');
+        if (at > 0) nested.push(`${segments.slice(0, at).join('/')}/`);
+      }
+    }
+    return Object.entries(this.opts.files ?? {})
+      .filter(([path]) => {
+        if (nested.some((dir) => path.startsWith(dir))) return false;
+        if (opts.excludePaths.some((dir) => path.startsWith(`${dir}/`))) return false;
+        if (!path.startsWith(prefix)) return false;
+        const rest = path.slice(prefix.length);
+        if (!opts.recursive && rest.includes('/')) return false;
+        if (rest.split('/').some((seg) => opts.excludeDirs.includes(seg))) return false;
+        const dot = rest.lastIndexOf('.');
+        return dot >= 0 && opts.ext.includes(rest.slice(dot).toLowerCase());
+      })
+      .map(([path, text]) => ({
+        path,
+        size: Buffer.byteLength(text, 'utf8'),
+        updatedAt: MOCK_FILE_MTIME,
+      }))
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   }
 }
+
+/** Fixed mtime so a discovery assertion is not time-dependent. */
+const MOCK_FILE_MTIME = '2026-01-01T00:00:00.000Z';
 
 // ---------- Mock CodeIndex ----------
 export class MockCodeIndex implements CodeIndex {

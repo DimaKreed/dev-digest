@@ -30,6 +30,8 @@ import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import { ConventionsRepository } from '../modules/conventions/repository.js';
 import type { ConventionsRepositoryPort } from '../modules/conventions/ports.js';
+import { ContextRepository } from '../modules/context/repository.js';
+import type { ContextRepositoryPort } from '../modules/context/ports.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -65,6 +67,7 @@ export interface ContainerOverrides {
    * of declaring the port in the first place.
    */
   conventions?: ConventionsRepositoryPort;
+  context?: ContextRepositoryPort;
 }
 
 export class Container {
@@ -87,6 +90,7 @@ export class Container {
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
   private _conventionsRepo?: ConventionsRepositoryPort;
+  private _contextRepo?: ContextRepositoryPort;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -121,6 +125,13 @@ export class Container {
     if (this.overrides.conventions) return this.overrides.conventions;
     this._conventionsRepo ??= new ConventionsRepository(this.db);
     return this._conventionsRepo;
+  }
+
+  /** Project-context persistence, behind its port so a test can replace it. */
+  get contextRepo(): ContextRepositoryPort {
+    if (this.overrides.context) return this.overrides.context;
+    this._contextRepo ??= new ContextRepository(this.db);
+    return this._contextRepo;
   }
 
   get codeIndex(): CodeIndex {

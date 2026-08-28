@@ -1,12 +1,13 @@
 import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type { Provider, RepoRef, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
+import type { ContextReads } from './ports.js';
 import { REVIEW_STRATEGY } from './constants.js';
-import { taskLine } from './helpers.js';
+import { orderedContextPaths, taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 import {
   deriveIntent,
@@ -27,6 +28,23 @@ type DerivedIntent = {
   tokensOut: number;
   costUsd: number | null;
 };
+
+/**
+ * The project-context documents one run resolved: the text actually injected,
+ * the per-document token sizes for the trace, and every path that could not be
+ * read with the reason it could not. Carried OUTSIDE the try/catch so a
+ * provider rejection still leaves the documents and their sizes in the trace.
+ */
+type ResolvedContext = {
+  /** Document bodies, in injection order. */
+  texts: string[];
+  /** Paths of `texts`, same order — becomes `specs_read`. */
+  paths: string[];
+  docs: { path: string; tokens: number }[];
+  skipped: { path: string; reason: 'missing' | 'unreadable' | 'escapes' }[];
+};
+
+const EMPTY_CONTEXT: ResolvedContext = { texts: [], paths: [], docs: [], skipped: [] };
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -64,6 +82,11 @@ export class ReviewRunExecutor {
     private container: Container,
     private repo: ReviewRepository,
     private agents: Container['agentsRepo'],
+    /**
+     * Project-context attachment reads, behind the narrow structural port in
+     * `ports.ts` — the container hands in the slice that owns those tables.
+     */
+    private context: ContextReads,
   ) {}
 
   /**
@@ -201,6 +224,11 @@ export class ReviewRunExecutor {
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
 
+    // Declared out here on purpose: AC-26's case is a run that resolved its
+    // documents and THEN failed at the provider, and the failure trace is built
+    // in the catch below.
+    let resolved: ResolvedContext = EMPTY_CONTEXT;
+
     try {
       // Resolve the agent's LLM provider. (container.llm throws if the provider
       // key is missing — caught below and persisted as a failed run.)
@@ -249,6 +277,18 @@ export class ReviewRunExecutor {
           : 'skills: none attached',
       );
 
+      // Project context — the agent's attached repository documents plus those
+      // of its ENABLED linked skills, read FRESH from the clone on every run.
+      // Assigned to the outer `resolved` so a later provider failure still
+      // leaves the documents and their sizes in the persisted trace.
+      resolved = await this.resolveContext(
+        agent.id,
+        pull.repoId,
+        repo,
+        linkedSkills.map((l) => l.skill.id),
+        runLog,
+      );
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -269,6 +309,11 @@ export class ReviewRunExecutor {
         // `## Skills / rules` section. Same omit-when-empty contract as below,
         // so an agent with no skills produces a byte-identical prompt to before.
         ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
+        // Resolved document TEXT, never a GitClient: reading happens out here
+        // and the pure engine receives materialized strings. Omitted when the
+        // set is empty, the same contract `callers` documents below — so an
+        // agent with no attachments produces a byte-identical prompt.
+        ...(resolved.texts.length > 0 ? { specs: resolved.texts } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -364,6 +409,11 @@ export class ReviewRunExecutor {
           skills_tokens: outcome.assembly.skills
             ? this.container.tokenizer.count(outcome.assembly.skills)
             : null,
+          // Same reasoning for the project-context block: counted here because
+          // the tokenizer is a server adapter and reviewer-core is pure.
+          specs_tokens: outcome.assembly.specs
+            ? this.container.tokenizer.count(outcome.assembly.specs)
+            : null,
         },
         tool_calls: outcome.chunks.map((c) => ({
           tool: 'review_file',
@@ -373,7 +423,11 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        // The paths actually injected, in injection order. Fills the trace row
+        // the UI has always rendered rather than adding a second array for it.
+        specs_read: resolved.paths,
+        context_docs: resolved.docs,
+        context_skipped: resolved.skipped,
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -442,7 +496,10 @@ export class ReviewRunExecutor {
         })
         .catch(() => undefined);
       await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
+        .saveRunTrace(
+          runId,
+          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, resolved),
+        )
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
@@ -606,6 +663,58 @@ export class ReviewRunExecutor {
   }
 
   /**
+   * Resolve the run's project-context documents: the ordered union of the
+   * agent's own attachments and those of its ENABLED linked skills, read fresh
+   * out of the clone.
+   *
+   * Reading happens HERE, outside the engine, and only strings cross into it —
+   * reviewer-core touches no filesystem. A path that cannot be read is skipped
+   * with a reason rather than failing the run: the documents are enrichment,
+   * and one deleted file must not cost the review.
+   *
+   * Nothing here caps or truncates a document. The per-file size limit governs
+   * discovery and attachment only; an already-attached document is injected
+   * verbatim however large it has become.
+   */
+  private async resolveContext(
+    agentId: string,
+    repoId: string,
+    // Just the clone address (H8): a Drizzle row alias must not appear in a
+    // ring-2 signature, and this body only ever reads `owner` and `name`. The
+    // caller's `repos` row satisfies it structurally.
+    repo: RepoRef,
+    enabledSkillIds: readonly string[],
+    runLog: RunLogger,
+  ): Promise<ResolvedContext> {
+    let sources;
+    try {
+      sources = await this.context.listForAgentAndSkills(agentId, enabledSkillIds, repoId);
+    } catch (err) {
+      runLog.info(`context: could not read attachments (${(err as Error).message})`);
+      return EMPTY_CONTEXT;
+    }
+    const paths = orderedContextPaths(sources, enabledSkillIds);
+    if (paths.length === 0) return EMPTY_CONTEXT;
+
+    const out: ResolvedContext = { texts: [], paths: [], docs: [], skipped: [] };
+    const ref: RepoRef = { owner: repo.owner, name: repo.name };
+    for (const path of paths) {
+      try {
+        const text = await this.container.git.readFile(ref, path);
+        out.texts.push(text);
+        out.paths.push(path);
+        out.docs.push({ path, tokens: this.container.tokenizer.count(text) });
+      } catch (err) {
+        out.skipped.push({ path, reason: skipReason((err as Error).message) });
+      }
+    }
+    // Counts and paths only — a document's TEXT is never logged.
+    runLog.info(`context: ${out.paths.length} read, ${out.skipped.length} skipped`);
+    for (const s of out.skipped) runLog.info(`context: skipped ${s.path} (${s.reason})`);
+    return out;
+  }
+
+  /**
    * A minimal RunTrace whose `log` is the run's full SSE buffer — persisted on
    * failure/cancel (and pre-work failures) so the events (and WHY it failed)
    * survive a reload, not just the in-memory stream.
@@ -616,6 +725,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     grounding: string,
     durationMs = 0,
+    context: ResolvedContext = EMPTY_CONTEXT,
   ): RunTrace {
     return {
       config: {
@@ -633,13 +743,31 @@ export class ReviewRunExecutor {
         skills_tokens: null,
         memory: null,
         specs: null,
+        specs_tokens: null,
         user: '',
       },
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],
-      specs_read: [],
+      // AC-26: a run that resolved its documents and then failed AT THE
+      // PROVIDER still reports what it had assembled and how big it was — that
+      // is what makes a context-window rejection diagnosable.
+      specs_read: context.paths,
+      context_docs: context.docs,
+      context_skipped: context.skipped,
       log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
     };
   }
+}
+
+/**
+ * Classify a failed document read from the adapter's own message. The clone
+ * containment guard throws `path escapes the repo clone`; a missing file is an
+ * ENOENT; anything else (permissions, a directory, an encoding failure) is
+ * simply unreadable.
+ */
+function skipReason(message: string): 'missing' | 'unreadable' | 'escapes' {
+  if (message.includes('escapes the repo clone')) return 'escapes';
+  if (message.includes('ENOENT')) return 'missing';
+  return 'unreadable';
 }

@@ -14,3 +14,6 @@ Not here:
 
 - [Smart Diff](./smart-diff.md) — why the risk ordering is a pure classifier, why the slice
   ships no `repository.ts`, and the three copies of the "last review" formula.
+- [Project context](./project-context.md) — why attached documents are stored as paths and
+  read fresh per run, why the injected block has no size cap, and why the type badge is data
+  rather than translated copy.

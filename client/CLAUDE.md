@@ -58,6 +58,9 @@ pnpm build
 - [docs/](docs/) — design decisions, flows, ADRs
 - [../server/docs/smart-diff.md](../server/docs/smart-diff.md) — why `SmartDiffViewer` re-derives
   per-line severity instead of the contract carrying it, and why it renders no diff rows of its own
+- [../server/docs/project-context.md](../server/docs/project-context.md) — why the project-context
+  type badge is rendered as data and **not** routed through next-intl, and why the `Context` tab
+  counts no tokens of its own
 - [specs/](specs/) — intended behavior, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`

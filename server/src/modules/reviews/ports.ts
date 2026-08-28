@@ -62,3 +62,29 @@ export interface PriorPrRow {
   /** The subset of the queried paths this PR also touched. */
   filesOverlap: string[];
 }
+
+/**
+ * One project-context attachment as the run reads it. `skillId === null` is the
+ * agent's own; anything else names the linked skill it came from.
+ */
+export interface ContextAttachmentSource {
+  skillId: string | null;
+  path: string;
+  order: number;
+}
+
+/**
+ * The ONE project-context read this module makes, declared HERE rather than
+ * imported from `modules/context/ports.ts`: reaching into a sibling slice trips
+ * `no-cross-module`, and the executor never needs more than this. The
+ * container's `ContextRepository` satisfies it structurally — no `implements`,
+ * no adapter, no mapper — which is the same shape `SmartDiffReads` uses over
+ * `reviewRepo`.
+ */
+export interface ContextReads {
+  listForAgentAndSkills(
+    agentId: string,
+    skillIds: readonly string[],
+    repoId: string,
+  ): Promise<ContextAttachmentSource[]>;
+}

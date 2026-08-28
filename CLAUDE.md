@@ -93,3 +93,6 @@ memory, skills, compose) are **intentional scaffolding, not dead code**. Never c
   criteria with `AC-NN` ids, and the `draft → approved → implemented` gate
 - [specs/](specs/) — **cross-module** specs. Single-module ones live in that module's `specs/`;
   the `NN` counter is shared by all five directories, so `SPEC-07` is unambiguous repo-wide
+- [specs/01-project-context-documents.md](specs/01-project-context-documents.md) — SPEC-01,
+  Project Context: repository markdown hand-attached to agents and skills, read per run and
+  injected as the untrusted `## Project context` block, with the read set named in the trace

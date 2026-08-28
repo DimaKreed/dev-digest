@@ -67,6 +67,9 @@ nothing to build and no dist to keep in sync.
 - [docs/](docs/) — design decisions, flows, ADRs
 - [../server/docs/smart-diff.md](../server/docs/smart-diff.md) — why `classifyPath` / `groupFiles`
   live in this package rather than in a server module, and why they make no LLM call
+- [../server/docs/project-context.md](../server/docs/project-context.md) — why `## Project context`
+  shipped dormant, why only resolved strings ever reach `assemblePrompt`, and what the injection
+  guard's enumeration of attached documents is for
 - [specs/](specs/) — intended behavior, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`
