@@ -212,6 +212,20 @@ it, guarded by "does not leak a click in the panel to a clickable ancestor" in i
 _2026-08-01_
 _2026-07-30_
 
+
+### A next-intl key that already holds a string cannot also hold a nested object, and the obvious fix is a PR-gate CRITICAL
+**Symptom:** `messages/en/onboarding.json` binds `"sections": "Sections"`. A per-section title
+lookup keyed by kind wants `sections.overview`, `sections.architecture`, … — an object at the
+same key. next-intl cannot hold both, so one of the two has to move. Deleting the scalar is the
+tempting fix and it is blocked: the eight scaffolding namespaces are protected by root
+`CLAUDE.md` § *Do not touch*, and a removed key trips `do-not-touch-deleted`
+(`.claude/skills/pr-self-review/invariants.md:19`).
+**Rule:** when a scaffolding namespace already spells the noun you want as a container, pick a
+different container name — `sectionTitles.<kind>` here — and leave the scalar untouched. Check
+this before writing the component, not after: the collision is invisible at author time
+(the JSON is valid either way) and surfaces as a `t()` returning the key path at render.
+_2026-08-27_
+
 ## Tool & Library Notes
 
 ### Anything added to the Showcase gallery must render with **no** providers

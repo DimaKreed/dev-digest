@@ -30,10 +30,21 @@ export default async function onboardingRoutes(appBase: FastifyInstance) {
     repoIntelEnabled: app.container.config.repoIntelEnabled,
   });
 
-  app.post('/repos/:id/onboarding/generate', { schema: { params: IdParams } }, async (req) => {
-    const { workspaceId } = await getContext(app.container, req);
-    return service.generate(workspaceId, req.params.id);
-  });
+  // One paid model call per request, so this carries the same per-route ceiling
+  // as every other model-invoking POST here (reviews, blast, diff-review). The
+  // global 120/min would otherwise allow 120 billed generations a minute.
+  // Skipped entirely under NODE_ENV=test, where the plugin is not registered.
+  app.post(
+    '/repos/:id/onboarding/generate',
+    {
+      schema: { params: IdParams },
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.generate(workspaceId, req.params.id);
+    },
+  );
 
   app.get('/repos/:id/onboarding', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);

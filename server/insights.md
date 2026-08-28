@@ -180,6 +180,21 @@ instead expect the failure at first use and say so in `.env.example`. If you wan
 you are adding a *new* rule, and it belongs next to the adapter's guard rather than duplicating it.
 _2026-08-27_
 
+
+### `DegradedReason` declares `flag_off`, but nothing in `server/src` ever produces it
+**Symptom:** a new module needed to tell "repo-intel is switched off" apart from "the index
+failed", and `DegradedReason` (`src/modules/repo-intel/types.ts:27`) offers exactly that value.
+Branching on it never fired. Grepping `'flag_off'` across `server/src` returns the declaration
+and consumers — no producer. The read methods short-circuit on the flag before they reach the
+point where they would stamp a reason, so the disabled case arrives looking like empty data.
+**Rule:** a consumer that must distinguish the disabled flag has to be handed
+`config.repoIntelEnabled` directly; it cannot recover it from the facade's own degradation
+signal. Keep the `degradedReason === 'flag_off'` branch as well — it costs nothing and becomes
+correct the day the pipeline starts emitting it — but never let it be the only path.
+Generalisation worth carrying: a union member that no code path constructs is not a contract,
+it is a comment, and `tsc` will never tell you which is which.
+_2026-08-27_
+
 ## Tool & Library Notes
 
 ### dependency-cruiser hides `import type` unless `tsPreCompilationDeps` is on, and that is how DI calls go unresolved
@@ -235,6 +250,20 @@ directory-junction case separate and unconditional — it exercises the same
 `if (entry.isSymbolicLink()) continue;` guard, which does not branch on file-vs-directory, so local
 coverage stays real while the file case runs on Linux CI. `server/test/adapters.test.ts:114-135`
 (the gate) and `:265-268` (the junction fixture, which is a plain symlink on Linux).
+_2026-08-27_
+
+
+### `pnpm typecheck` never looks at `server/test/` — a type error there ships silently
+**Symptom:** `tsconfig.json`'s `include` is `src/**/*.ts` only, so `tsc --noEmit` compiles no test
+file. vitest transpiles rather than type-checks, so nothing in either CI lane reads test types
+either. There is already a live example: `MockLLMProvider`'s constructor is typed
+`'openai' | 'anthropic'` (`src/adapters/mocks.ts`) while `test/conventions.it.test.ts` passes
+`'openrouter'` — an error that has never been reported because no tool is looking.
+**Rule:** a green `pnpm typecheck` says nothing about the tests. When a test needs a shape it
+does not yet have — a wider provider union, a new override key — the compiler will not stop you
+and the suite will still pass; the mismatch surfaces later as a runtime surprise in an unrelated
+change. Either widen the mock deliberately as its own change, or route around it and say so.
+Do not read a passing typecheck as coverage of `test/`.
 _2026-08-27_
 
 ## Recurring Errors & Fixes

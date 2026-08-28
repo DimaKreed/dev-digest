@@ -317,16 +317,19 @@ describe("OnboardingView — reading a stored tour", () => {
     await renderTour();
 
     const href = `https://github.com/acme/api/blob/${TOUR_SHA}/src/overview.ts`;
-    const link = screen
-      .getAllByRole("link")
-      .find((a) => a.getAttribute("href") === href);
-    expect(link).toBeDefined();
+    // AC-29/AC-30: located BY its accessible name, so a dropped or empty
+    // `aria-label` fails the query outright. The previous check concatenated
+    // textContent with aria-label and could never be empty once the link had
+    // been found by href — and concatenating also mismodels name computation,
+    // since aria-label overrides text rather than adding to it.
+    const link = screen.getByRole("link", {
+      name: msg("linkLabel").replace("{path}", "src/overview.ts"),
+    });
+    expect(link).toHaveAttribute("href", href);
     expect(link).toHaveAttribute("target", "_blank");
-    expect(link?.getAttribute("rel") ?? "").toContain("noopener");
+    expect(link.getAttribute("rel") ?? "").toContain("noopener");
     // AC-20: the stored sha, never current head.
-    expect(link?.getAttribute("href")).not.toContain(HEAD_SHA);
-    // AC-29/AC-30: the link carries an accessible name.
-    expect((link?.textContent ?? "") + (link?.getAttribute("aria-label") ?? "")).not.toEqual("");
+    expect(link.getAttribute("href")).not.toContain(HEAD_SHA);
   });
 
   it("offers regenerate in place of generate while a tour exists (AC-24, AC-32)", async () => {
@@ -421,8 +424,13 @@ describe("OnboardingView — no provider key (AC-10)", () => {
     renderView();
     await screen.findByText(msg("generate.title"));
 
-    const cta = screen.queryByRole("button", { name: msg("generate.cta") });
-    if (cta) expect(cta).toBeDisabled();
+    // Unconditional on purpose: the empty state passes `cta={undefined}` when
+    // `can_generate` is false, so no button is rendered at all. A guarded
+    // `if (cta) expect(cta).toBeDisabled()` would skip on every run and this
+    // test would assert nothing but the banner.
+    expect(
+      screen.queryByRole("button", { name: msg("generate.cta") }),
+    ).not.toBeInTheDocument();
     expect(bannerWith(msg("banner.noKey.title"))).toBeDefined();
   });
 
@@ -437,11 +445,12 @@ describe("OnboardingView — no provider key (AC-10)", () => {
     });
     await renderTour();
 
-    const cta = screen.queryByRole("button", { name: msg("regenerate") });
-    if (cta) {
-      expect(cta).toBeDisabled();
-      fireEvent.click(cta);
-    }
+    // Unlike the empty state, the header action IS rendered here and carries
+    // `disabled={!canGenerate}` — so this must be unconditional, or a component
+    // that stopped rendering the control would pass by skipping the assertion.
+    const cta = screen.getByRole("button", { name: msg("regenerate") });
+    expect(cta).toBeDisabled();
+    fireEvent.click(cta);
     expect(bannerWith(msg("banner.noKey.title"))).toBeDefined();
     // AC-10: unavailable *before* it is attempted — pressing it costs nothing.
     expect(calls.post).toBe(0);
@@ -488,17 +497,15 @@ describe("OnboardingView — empty, in-flight and error states", () => {
 
   it("announces the outcome of a regeneration through a polite live region (AC-31)", async () => {
     mockApi({});
-    const { container } = await renderTour();
+    await renderTour();
 
     fireEvent.click(screen.getByRole("button", { name: msg("regenerate") }));
 
-    await waitFor(() => {
-      const live = [
-        ...container.querySelectorAll('[aria-live="polite"]'),
-        ...container.querySelectorAll('[role="status"]'),
-      ];
-      expect(live.some((el) => (el.textContent ?? "").trim().length > 0)).toBe(true);
-    });
+    // Assert the announced STRING, not merely that some live region is
+    // non-empty: `Banner` also renders `role="status"` with its title as text,
+    // so a "some live region has content" check passes under any fixture that
+    // produces a banner, with the announcement itself still empty.
+    expect(await screen.findByText(msg("regenerated"))).toBeInTheDocument();
   });
 
   it("shows an error state naming the reason, with a retry that refetches (AC-23)", async () => {

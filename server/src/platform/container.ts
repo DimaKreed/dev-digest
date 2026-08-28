@@ -131,7 +131,6 @@ export class Container {
     return this._conventionsRepo;
   }
 
-  /** Project-context persistence, behind its port so a test can replace it. */
   /** Onboarding persistence, behind its port so a test can replace it. */
   get onboardingRepo(): OnboardingRepositoryPort {
     if (this.overrides.onboarding) return this.overrides.onboarding;
@@ -139,6 +138,7 @@ export class Container {
     return this._onboardingRepo;
   }
 
+  /** Project-context persistence, behind its port so a test can replace it. */
   get contextRepo(): ContextRepositoryPort {
     if (this.overrides.context) return this.overrides.context;
     this._contextRepo ??= new ContextRepository(this.db);

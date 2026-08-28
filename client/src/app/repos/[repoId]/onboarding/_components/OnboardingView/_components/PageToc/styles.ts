@@ -4,7 +4,10 @@ import type { CSSProperties } from "react";
 export const s = {
   nav: {
     position: "sticky",
-    top: "var(--sticky-header-h)",
+    // Matches s.main's top padding. NOT --sticky-header-h: that token is the
+    // PR detail page's sticky header height and this page has no sticky header,
+    // so using it would park the list 180px down against empty space.
+    top: 14,
     width: 200,
     flexShrink: 0,
     display: "flex",

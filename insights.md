@@ -358,6 +358,20 @@ match anything has never been tested, and a `0` from it means nothing. The corre
 that package is in `mcp/README.md`.
 _2026-08-13_
 
+**Third counterpart — the pattern compiled, the identifier matched, and the file was never
+searched at all, because ripgrep classified it as binary.**
+`server/src/modules/repo-intel/service.ts` contains a literal NUL byte inside a `${a}\0${b}`
+composite map key. `rg` treats a NUL as the binary sentinel and skips the file, so the `Grep`
+tool returns `0 matches` for a symbol that is demonstrably there. Nothing on stderr, no banner,
+no "binary file matches" line — the result is indistinguishable from a clean sweep of a searched
+file.
+**Rule:** when a probe over a specific known-populated file returns zero, confirm the file was
+searched before concluding anything — `grep -c '' <file>` reports a line count for a text file
+and `rg --files <file>` lists it only if ripgrep will read it. For a file already known to carry
+a NUL, read it through Python or `sed -n` instead. This is the third distinct way a `0` lies in
+this repo, and the only one that leaves no trace anywhere.
+_2026-08-27_
+
 ### A grep probe used as an acceptance criterion counts comment prose, so a header comment must not spell the identifier it forbids
 **Symptom:** a plan shipped probes like `grep -nE "container\.llm|openrouter|reviewPullRequest"
 server/src/modules/smart-diff/*.ts` → expect 0, as the mechanical form of "makes no model call". The
@@ -402,6 +416,23 @@ real. The same claim sat in three workflow comments — `server-unit.yml:96`,
 `server-integration.yml:68`, `e2e-web.yml:87` — and all three now explain why the command is
 inlined without invoking the flag. This entry stays as the reason not to reintroduce the
 explanation; it is no longer a live contradiction to work around. _2026-08-26_
+
+
+### A brace-expanded `ls` glob reports "no matches" in Git Bash while the files are on disk
+**Symptom:** `ls {,server/,client/,reviewer-core/,mcp/}specs/[0-9][0-9]-*.md 2>/dev/null || echo
+"no specs yet"` — the exact command
+[.claude/skills/spec-creator/SKILL.md](.claude/skills/spec-creator/SKILL.md) prescribes for
+picking the next spec number — printed `no specs yet` while `specs/01-project-context-documents.md`
+existed and was staged. `Glob **/specs/[0-9][0-9]-*.md` found it instantly. The failure is silent:
+`ls` exits non-zero, the `||` branch fires, and the fallback message reads exactly like a true
+empty result.
+**Rule:** never derive a repo-wide count or a next-free-number from a brace-expanded shell glob
+here — use the `Glob` tool, which does not go through the shell. This one matters more than a
+normal tooling quirk because the wrong answer is not an error but a **collision**: two specs
+claiming the same `NN`, which the whole `AC-NN` traceability chain assumes is unique. The
+`spec-writer` agent caught it only because it re-derives the number itself instead of trusting
+the briefing handed to it — that redundancy is load-bearing, not belt-and-braces.
+_2026-08-27_
 
 ## Recurring Errors & Fixes
 
