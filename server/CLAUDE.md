@@ -85,6 +85,10 @@ even if `package.json` drifts locally.
   three files that each restate the "last review" formula
 - [docs/project-context.md](docs/project-context.md) — why an attachment stores paths and never
   text, why the per-file limit stops at attachment, and why `listFiles` went on `GitClient`
+- [docs/onboarding-generator.md](docs/onboarding-generator.md) — why the tour generates on a
+  blocking POST (the shared `JobRunner`'s 120 s / `retries: 2` would break "exactly one model
+  call"), why the precondition reads the edge counter and never `repo_index_state.status`, and
+  why the four new tour fields are `.nullish()` inside the existing jsonb
 - [specs/](specs/) — intended behavior, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`

@@ -17,3 +17,6 @@ Not here:
 - [Project context](./project-context.md) — why attached documents are stored as paths and
   read fresh per run, why the injected block has no size cap, and why the type badge is data
   rather than translated copy.
+- [Onboarding Generator](./onboarding-generator.md) — why the tour is a blocking POST rather
+  than a job, why the derivation is a pure ring-0 kernel, and why the four degradation cases
+  stay apart.

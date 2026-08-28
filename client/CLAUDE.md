@@ -61,6 +61,10 @@ pnpm build
 - [../server/docs/project-context.md](../server/docs/project-context.md) — why the project-context
   type badge is rendered as data and **not** routed through next-intl, and why the `Context` tab
   counts no tokens of its own
+- [../server/docs/onboarding-generator.md](../server/docs/onboarding-generator.md) — why the
+  tour's section titles come from the `onboarding` namespace and the model-supplied `title` is
+  ignored, why an unrecognised `kind` is dropped in `helpers.ts` rather than rendered, and why
+  every file link is a blob URL at the tour's stored sha rather than at current head
 - [specs/](specs/) — intended behavior, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`
