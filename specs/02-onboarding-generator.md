@@ -1,6 +1,6 @@
 # Spec: Onboarding Generator — per-repo 5-section onboarding tour
 Spec ID: SPEC-02
-Status: approved
+Status: implemented
 
 ## Problem and user
 
@@ -93,7 +93,7 @@ produced and then discarded for this purpose.
   409-shaped error naming `POST /repos/:id/resync` as the action that resolves it.
 - **AC-09** — IF the repository's index reports zero indexed files, THEN the system shall not
   classify the index as degraded and shall not refuse generation on that basis. (`SUPPORTED_EXT` is
-  JS/TS only — `server/src/modules/repo-intel/constants.ts:15` — so a Python or Go repository
+  JS/TS only — `server/src/modules/repo-intel/constants.ts:14` — so a Python or Go repository
   indexes to zero files, and an empty repository is not a broken index.)
 - **AC-10** — IF no provider key is configured for the resolved onboarding model, THEN the system
   shall present the generate and regenerate actions as unavailable before either is attempted, and

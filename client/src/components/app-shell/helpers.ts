@@ -26,7 +26,10 @@ export function isTextInput(el: EventTarget | null): boolean {
 export function activeKeyFor(pathname: string): string {
   if (pathname.startsWith("/settings")) return "settings";
   if (pathname.includes("/multi-agent")) return "multi-agent";
-  if (pathname.includes("/onboarding")) return "onboarding-tour";
+  // The repo-scoped test must come BEFORE any bare "/onboarding" match: the
+  // bare route is the ADD-REPOSITORY screen, not the tour, and a substring
+  // test on it lights the tour nav item up on the add-repo page.
+  if (/^\/repos\/[^/]+\/onboarding/.test(pathname)) return "onboarding-tour";
   if (pathname.includes("/context")) return "context";
   if (pathname.includes("/conventions")) return "conventions";
   if (pathname.includes("/pulls")) return "pulls";

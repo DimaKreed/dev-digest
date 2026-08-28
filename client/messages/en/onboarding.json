@@ -8,10 +8,56 @@
   "generate": {
     "title": "Generate onboarding tour",
     "body": "DevDigest indexes the repo and specs, then writes a 5-section guided tour: overview, architecture, key modules, getting started, and conventions & gotchas.",
-    "cta": "Generate onboarding tour",
+    "cta": "Generate the tour",
     "generating": "Generating…"
   },
   "loadError": {
     "title": "Couldn’t load the onboarding tour"
-  }
+  },
+  "sectionTitles": {
+    "overview": "Overview",
+    "architecture": "Architecture",
+    "key_modules": "Key modules",
+    "getting_started": "Getting started",
+    "conventions": "Conventions & gotchas"
+  },
+  "banner": {
+    "notIndexed": {
+      "title": "This repository isn’t indexed",
+      "body": "The import graph is empty, so there are no reading-path facts to build a tour from. Re-sync the repository to index it, then generate the tour.",
+      "cta": "Re-sync repository"
+    },
+    "flagOff": {
+      "title": "Repository intelligence is switched off",
+      "body": "The tour is built from the code index, and indexing is disabled by configuration on this server. This is a setting, not a failed index.",
+      "cta": "Open settings"
+    },
+    "noKey": {
+      "title": "No provider key configured",
+      "body": "Generating a tour needs a key for the model configured for onboarding. Add one in Settings and the action becomes available.",
+      "cta": "Add a provider key"
+    },
+    "noModel": {
+      "title": "Written without a model",
+      "body": "The model call failed, so this tour was built from the indexed facts alone. The structure is complete; the prose is not. Regenerating retries the call.",
+      "cta": "Regenerate this tour"
+    },
+    "stale": {
+      "title": "Written for a different commit",
+      "body": "This tour describes an earlier commit than the repository’s current head, so a file may have moved since. Every link still opens the commit the tour was written for.",
+      "cta": "Regenerate this tour"
+    }
+  },
+  "hotnessNote": "The reading path reflects import rank alone. Change frequency is not measured, so a file that changes constantly is not ranked any higher for it.",
+  "droppedLinks": "{count} link(s) were dropped because the path is not in this repository’s indexed file set.",
+  "errorState": {
+    "body": "The tour could not be loaded: {reason}",
+    "retry": "Retry"
+  },
+  "linkLabel": "Open {path} on GitHub, at the commit this tour was written for",
+  "generated": "Generated {when}",
+  "collapseSection": "Collapse the {section} section",
+  "expandSection": "Expand the {section} section",
+  "regenerated": "The onboarding tour was regenerated.",
+  "regenerateFailed": "Regenerating the onboarding tour failed: {reason}"
 }
