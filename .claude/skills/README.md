@@ -21,6 +21,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [engineering-insights](engineering-insights/SKILL.md) | Shared | Read a module's `insights.md` before work; append durable findings at the end |
 | [pr-self-review](pr-self-review/SKILL.md) | Shared | Routes the local diff to the skills above and blocks `gh pr create` on any CRITICAL |
 | [feature-workflow](feature-workflow/SKILL.md) | Shared | Runs a large change through the subagent chain, with artifact hand-offs and a per-run trace — and decides first whether it earns one |
+| [workflow-retro](workflow-retro/SKILL.md) | Shared | Grades a finished multi-agent run from the session transcript — cost, launch order, friction, duplicated work, gaps. Manual only |
 
 ## What Are Skills?
 
