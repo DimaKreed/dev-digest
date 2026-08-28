@@ -181,7 +181,61 @@ export interface GitClient {
   blame(repo: RepoRef, path: string): Promise<BlameLine[]>;
   log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;
+  /**
+   * List files under `opts.root` inside the clone, CONTAINED to the clone root.
+   *
+   * Discovery only — no content is read. Symlinks are never followed (neither a
+   * linked file nor a linked directory), excluded directory names are skipped
+   * whole, and only the given extensions are returned. `size` is reported per
+   * file so a caller can apply its own limit without a second stat; this method
+   * applies none of its own.
+   *
+   * Returns `[]` when `root` does not resolve (an absent search directory is a
+   * normal state, not an error). Throws `path escapes the repo clone` when
+   * `root` resolves outside it.
+   */
+  listFiles(repo: RepoRef, opts: ListFilesOptions): Promise<RepoFileEntry[]>;
   clonePathFor(repo: RepoRef): string;
+}
+
+export interface ListFilesOptions {
+  /** Clone-relative directory to list. `'.'` is the clone root. */
+  root: string;
+  /** Descend into subdirectories. */
+  recursive: boolean;
+  /** Lowercase extensions to keep, e.g. `['.md']`. */
+  ext: readonly string[];
+  /** Directory NAMES never descended into (`node_modules`, `.git`, …). */
+  excludeDirs: readonly string[];
+  /**
+   * Clone-relative PATHS never descended into, e.g. `.devdigest/cache`.
+   *
+   * Separate from `excludeDirs` because that list matches a NAME at any depth,
+   * which is too blunt for this: excluding `cache` by name would remove every
+   * `cache/` directory in every repository, and excluding `.devdigest` by name
+   * would remove a sibling that is meant to be discoverable. Compared against
+   * the path relative to the CLONE root, forward slashes, no trailing slash.
+   */
+  excludePaths: readonly string[];
+  /**
+   * Refuse to descend into a NESTED REPOSITORY — any subdirectory that itself
+   * contains a `.git` entry.
+   *
+   * Load-bearing rather than defensive: a clone can vendor another checkout
+   * (this repository keeps its own clones under `server/clones/`), and a walk
+   * that recurses by directory NAME would otherwise report that checkout's
+   * documents as the outer repository's own. The starting root is exempt — a
+   * clone always contains `.git`, and that is what makes it the clone.
+   */
+  skipNestedRepos: boolean;
+}
+
+export interface RepoFileEntry {
+  /** Path relative to the CLONE root, forward slashes. */
+  path: string;
+  size: number;
+  /** File mtime, ISO 8601. */
+  updatedAt: string;
 }
 
 // ---------- CodeIndex (ripgrep + tree-sitter) ----------

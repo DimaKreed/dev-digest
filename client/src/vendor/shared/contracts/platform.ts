@@ -269,13 +269,109 @@ export const PrCommentInput = z.object({
 export type PrCommentInput = z.infer<typeof PrCommentInput>;
 
 // ---- Project Context ----
+/**
+ * The type badge a document carries: the matched search root's own directory
+ * name, verbatim.
+ *
+ * Deliberately OPEN, not an enum. The search roots are configurable, so a
+ * closed vocabulary collapsed every non-default root onto one fallback value
+ * and made `adr/` indistinguishable from `rfc/` — two different roots must
+ * never display the same type. It follows that this string is DATA, not copy:
+ * the client renders it as it arrives and does not route it through a
+ * translation key, the same rule the interpolated root list already follows.
+ *
+ * (The closed-vocabulary rule in the root `CLAUDE.md` covers `Severity` and
+ * `Verdict` only; it does not reach this type.)
+ */
+export const ContextDocType = z.string();
+export type ContextDocType = z.infer<typeof ContextDocType>;
+
+/**
+ * Why a discovered document cannot be attached. An ENUM, not a message: the
+ * per-file byte ceiling is a server-side number and must not travel to the
+ * client, so the server states the VERDICT and the UI owns the wording.
+ */
+export const NotAttachableReason = z.enum(['too_large']);
+export type NotAttachableReason = z.infer<typeof NotAttachableReason>;
+
+/**
+ * One repository markdown document, as discovered on the Project Context page.
+ *
+ * Every field added past `updated_at` is `.nullish()` so anything that parses
+ * this contract today keeps parsing. `tokens` is counted server-side by the
+ * tokenizer adapter — the client counts none of its own (and `content` is
+ * populated only by the single-file preview endpoint).
+ */
 export const SpecFile = z.object({
   path: z.string(),
   content: z.string().nullish(),
   size: z.number().int().nullish(),
   updated_at: z.string().nullish(),
+  /** Directory the document lives in; `'.'` at the clone root. */
+  dir: z.string().nullish(),
+  /**
+   * The document's displayed type: the directory name of the search root that
+   * matched it.
+   *
+   * Carried here even though `ContextSearchRoot` carries no such field, and the
+   * asymmetry is the point: for a ROOT the type was the root's own name, so
+   * there was nothing to tell the client. For a DOCUMENT it is information the
+   * client cannot derive at all — given `specs/api/public.md` it does not know
+   * which configured root matched, nor how many path segments that root spanned.
+   */
+  doc_type: ContextDocType.nullish(),
+  tokens: z.number().int().nullish(),
+  /** How many AGENTS in this workspace attach this document for this repo. */
+  used_by: z.number().int().nullish(),
+  attachable: z.boolean().nullish(),
+  not_attachable_reason: NotAttachableReason.nullish(),
 });
 export type SpecFile = z.infer<typeof SpecFile>;
+
+/**
+ * One configured project-context search root, as the server TELLS the client.
+ *
+ * The client is told which directories were searched rather than deriving or
+ * hardcoding them — the same rule that keeps token counting server-side. The
+ * per-file byte ceiling is deliberately NOT here: the threshold stays a
+ * server-side number, and a document over it is reported as a verdict
+ * (`attachable` + `not_attachable_reason`), never as a size to compare against.
+ */
+export const ContextSearchRoot = z.object({
+  /**
+   * Clone-relative directory name, e.g. `specs` — and, by AC-41, the displayed
+   * type of every document matched under it.
+   *
+   * There is deliberately NO second field carrying that type. It would ship the
+   * same value twice, and a contract that does invites drift: sooner or later
+   * one field is updated and the other is not. This file is duplicated into
+   * `client/src/vendor/shared/`, so that day would pass quietly in two places
+   * at once. A consumer that wants the badge for a root reads `dir`.
+   */
+  dir: z.string(),
+});
+export type ContextSearchRoot = z.infer<typeof ContextSearchRoot>;
+
+/**
+ * One entry of an agent's or skill's attachment set. Paths + order only: no
+ * text, no size and no snapshot, because the document is read fresh from the
+ * clone on every run.
+ */
+export const ContextAttachment = z.object({
+  path: z.string(),
+  order: z.number().int(),
+});
+export type ContextAttachment = z.infer<typeof ContextAttachment>;
+
+/**
+ * The WHOLE ordered set, sent in one request. Position in `paths` IS the
+ * injection order, so a reorder and an attach are the same call.
+ */
+export const SetContextBody = z.object({
+  repo_id: z.string().uuid(),
+  paths: z.array(z.string()).max(200),
+});
+export type SetContextBody = z.infer<typeof SetContextBody>;
 
 export const IndexStatus = z.object({
   status: z.enum(['idle', 'cloning', 'parsing', 'embedding', 'done', 'error']),

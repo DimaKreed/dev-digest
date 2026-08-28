@@ -1,7 +1,7 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { join, sep } from 'node:path';
-import { mkdir, readFile, access, rm, realpath } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { join, sep, resolve, extname, relative } from 'node:path';
+import { mkdir, readFile, readdir, stat, access, rm, realpath } from 'node:fs/promises';
+import { constants, type Dirent, type Stats } from 'node:fs';
 import type {
   GitClient,
   RepoRef,
@@ -9,6 +9,8 @@ import type {
   UnifiedDiff,
   BlameLine,
   GitCommit,
+  ListFilesOptions,
+  RepoFileEntry,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './diff-parser.js';
 
@@ -144,6 +146,107 @@ export class SimpleGitClient implements GitClient {
       throw new Error(`path escapes the repo clone: ${path}`);
     }
     return readFile(target, 'utf8');
+  }
+
+  /**
+   * List files under a clone-relative root, CONTAINED to the clone root.
+   *
+   * Same threat model as `readFile` above, and the same guard: `realpath` both
+   * sides and compare, because the clone holds attacker-controlled content and
+   * a lexical check cannot see a symlink. Two further defenses make the walk
+   * itself safe without a realpath per entry:
+   *
+   *  - a symlink is never traversed AND never returned, so every emitted path
+   *    is a real descendant of the resolved search root;
+   *  - the search root is resolved and contained ONCE, before the walk starts,
+   *    so a root of `../..` is refused rather than listed.
+   *
+   * No content is read here and no size limit is applied — the caller owns its
+   * own limit and gets `size` to apply it with.
+   */
+  async listFiles(repo: RepoRef, opts: ListFilesOptions): Promise<RepoFileEntry[]> {
+    let cloneRoot: string;
+    let searchRoot: string;
+    try {
+      cloneRoot = await realpath(this.clonePathFor(repo));
+    } catch {
+      // No clone on disk at all — nothing to discover.
+      return [];
+    }
+    const contained = (target: string): boolean =>
+      target === cloneRoot || target.startsWith(cloneRoot + sep);
+    const lexical = resolve(cloneRoot, opts.root);
+    if (!contained(lexical)) {
+      throw new Error(`path escapes the repo clone: ${opts.root}`);
+    }
+    try {
+      searchRoot = await realpath(lexical);
+    } catch {
+      // A configured search directory this repo simply does not have.
+      return [];
+    }
+    if (!contained(searchRoot)) {
+      throw new Error(`path escapes the repo clone: ${opts.root}`);
+    }
+
+    const exts = new Set(opts.ext);
+    const excluded = new Set(opts.excludeDirs);
+    // Clone-relative paths, so they are compared against `relative(cloneRoot,…)`
+    // rather than against a bare directory name.
+    const excludedPaths = new Set(opts.excludePaths);
+    const relOf = (full: string): string => relative(cloneRoot, full).split(sep).join('/');
+    const out: RepoFileEntry[] = [];
+
+    const walk = async (dir: string, isSearchRoot: boolean): Promise<void> => {
+      let entries: Dirent[];
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        // Unreadable directory (permissions, dangling link) — skip cleanly.
+        return;
+      }
+      // A NESTED repository: stop here and emit nothing from this subtree. The
+      // search root itself is exempt — the clone we were asked to walk has a
+      // `.git` of its own, and that is precisely what makes it the clone.
+      // Detected off the directory listing we already have, so it costs no
+      // extra stat per directory.
+      if (
+        opts.skipNestedRepos &&
+        !isSearchRoot &&
+        entries.some((e) => e.name === '.git')
+      ) {
+        return;
+      }
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!opts.recursive || excluded.has(entry.name)) continue;
+          if (excludedPaths.size > 0 && excludedPaths.has(relOf(full))) continue;
+          await walk(full, false);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        if (!exts.has(extname(entry.name).toLowerCase())) continue;
+        let info: Stats;
+        try {
+          info = await stat(full);
+        } catch {
+          continue;
+        }
+        out.push({
+          // Relative to the CLONE root (not the search root) so the path is the
+          // same string `readFile` takes.
+          path: relOf(full),
+          size: info.size,
+          updatedAt: info.mtime.toISOString(),
+        });
+      }
+    };
+
+    await walk(searchRoot, true);
+    out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    return out;
   }
 }
 

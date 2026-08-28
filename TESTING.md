@@ -48,7 +48,8 @@ fails there if the win32 prebuilt is missing).
 (pgvector) via testcontainers, builds the Fastify app, migrates + seeds, and
 drives routes end-to-end: reviews + run lifecycle (incl. grounding), agents CRUD,
 repo-intel symbol clamping, pulls comments, settings models, blast radius, diff
-review. They self-skip when Docker is unavailable.
+review, project-context attach → run → trace. They self-skip when Docker is
+unavailable.
 
 Two of those files carry invariants only a real DB can prove, and both are worth
 keeping green rather than rewriting:

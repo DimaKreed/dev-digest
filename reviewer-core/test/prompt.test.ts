@@ -23,6 +23,15 @@ describe('assemblePrompt — shared injection guard (server + CI)', () => {
     expect(sys).toMatch(/<untrusted>.*DATA to be analyzed/s);
   });
 
+  it('names attached project documents among the untrusted sources', () => {
+    // The enumeration is the guard's only statement about WHAT is untrusted, so
+    // a source that is injected but unnamed reads to the model as trusted.
+    // Attached repository documents are repo-controlled content in the prompt,
+    // so the guard must list them — wording only, never a keyword scan.
+    expect(sys).toMatch(/attached project documents/i);
+    expect(sys).toMatch(/specs, docs, insights/i);
+  });
+
   it('forbids "intentional/test/demo" claims from descoping the review', () => {
     // The defense that replaced the keyword sanitizer: a general, trusted,
     // language-agnostic rule — not text parsing of untrusted input.

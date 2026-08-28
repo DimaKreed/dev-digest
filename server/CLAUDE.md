@@ -83,6 +83,16 @@ even if `package.json` drifts locally.
 - [docs/](docs/) — design decisions, flows, ADRs
 - [docs/smart-diff.md](docs/smart-diff.md) — why `smart-diff` ships no `repository.ts`, and the
   three files that each restate the "last review" formula
+- [docs/project-context.md](docs/project-context.md) — why an attachment stores paths and never
+  text, why the per-file limit stops at attachment, and why `listFiles` went on `GitClient`
+- [docs/onboarding-generator.md](docs/onboarding-generator.md) — why the tour generates on a
+  blocking POST (the shared `JobRunner`'s 120 s / `retries: 2` would break "exactly one model
+  call"), why the precondition reads the edge counter and never `repo_index_state.status`, and
+  why the four new tour fields are `.nullish()` inside the existing jsonb
+- [docs/pr-brief-card.md](docs/pr-brief-card.md) — why the brief's cost lives in the stored
+  document and never in `agent_runs.cost_usd`, why `modules/brief/` reaches blast radius
+  through its own two-method `BriefIntelReads` port instead of `modules/blast/service.ts`, and
+  why `REPO_INTEL_ENABLED=false` is read off the config rather than recovered from the facade
 - [specs/](specs/) — intended behavior, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`

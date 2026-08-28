@@ -48,17 +48,22 @@ already lost.
 
 Started <date> · branch `<branch>`
 
-| # | Stage | Agent | Model | Artifact | Verdict | Wall |
-|---|---|---|---|---|---|---|
+| # | Stage | Agent | Model | Artifact | Verdict | Wall | Tokens |
+|---|---|---|---|---|---|---|---|
 ```
 
 `.devdigest/` is gitignored, so nothing here enters the PR gate's scope fingerprint.
 
 **What the trace can and cannot hold.** Model, artifact path, verdict and wall time are all
-observable. **Per-agent token and dollar cost is not** — a subagent cannot see its own usage, and
-nothing surfaces it to the caller. Record one session-level figure from `/cost` at the end, under
-`## Cost`, and label it as session-level. Never write a per-agent breakdown; an invented one is
-worse than an absent one.
+observable. So is **per-agent cost** — an agent's completion notification carries
+`subagent_tokens`, `tool_uses` and `duration_ms` — but only *once, live*: that notification is never
+written to the session transcript, and the subagent's own transcript is empty. So the figures are
+recoverable while the run is happening and **gone afterwards**, which is the same reason the rows
+are appended as each stage lands rather than at the end. Add a `Tokens` column and fill it from the
+notification as each stage completes; `—` for a human gate, and for an agent whose notification you
+no longer have. Then one session-level figure from `/cost` at the end, under `## Cost`, labelled as
+session-level. Never write a per-agent figure you did not read off a notification; an invented one
+is worse than an absent one. `/workflow-retro` grades the finished run from these numbers.
 
 ## The chain
 
@@ -191,7 +196,8 @@ an internal refactor with no external surface, and say you skipped it.
 agent: `engineering-insights` appends to files the agents deliberately cannot write, and
 `pr-self-review` is the gate that blocks `gh pr create`.
 
-Then append `## Cost` to the run file from `/cost`, session-level.
+Then append `## Cost` to the run file from `/cost`, session-level. `/workflow-retro` is available
+to grade the run itself, but it is **manual** — run it only if the user asks.
 
 ## The refactor variant
 
@@ -237,6 +243,7 @@ Not every large task is a feature. Single agents, invoked directly:
   is wrong, say why with evidence and fix the input.
 - **Append to the trace as each stage lands**, including `blocked` stages and skipped ones with a
   reason. A trace with gaps cannot be read afterwards.
-- **Never fabricate per-agent cost.** Session-level from `/cost`, labelled as such.
+- **Never fabricate per-agent cost.** Take it from the completion notification as the stage lands,
+  or leave it `—`. Session-level cost from `/cost`, labelled as such.
 - The chain never commits and never opens a PR. Stage 9 ends at `/pr-self-review`; publishing is
   the user's call.

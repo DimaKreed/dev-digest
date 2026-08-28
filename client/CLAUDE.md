@@ -58,6 +58,17 @@ pnpm build
 - [docs/](docs/) — design decisions, flows, ADRs
 - [../server/docs/smart-diff.md](../server/docs/smart-diff.md) — why `SmartDiffViewer` re-derives
   per-line severity instead of the contract carrying it, and why it renders no diff rows of its own
+- [../server/docs/project-context.md](../server/docs/project-context.md) — why the project-context
+  type badge is rendered as data and **not** routed through next-intl, and why the `Context` tab
+  counts no tokens of its own
+- [../server/docs/onboarding-generator.md](../server/docs/onboarding-generator.md) — why the
+  tour's section titles come from the `onboarding` namespace and the model-supplied `title` is
+  ignored, why an unrecognised `kind` is dropped in `helpers.ts` rather than rendered, and why
+  every file link is a blob URL at the tour's stored sha rather than at current head
+- [../server/docs/pr-brief-card.md](../server/docs/pr-brief-card.md) — why `PrBriefCard` shows
+  the brief's own `risk_level` and no verdict, why the risks render there rather than in
+  `IntentCard` (which this feature leaves untouched), and why a review-focus entry with no line
+  still opens the diff tab instead of being inert
 - [specs/](specs/) — intended behavior, written before implementation
 - [insights.md](insights.md) — hard-won findings in fixed sections; **read it before you
   edit here**, append at the end of a task via `/engineering-insights`

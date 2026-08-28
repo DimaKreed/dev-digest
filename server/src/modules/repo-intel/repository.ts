@@ -170,6 +170,21 @@ export class RepoIntelRepository {
       .where(eq(t.symbols.repoId, repoId));
   }
 
+  /**
+   * Every distinct file path the index holds a symbol for. This is the closest
+   * thing to a persisted file tree the indexer keeps — nothing else records the
+   * set of files that were actually indexed — so link verification checks
+   * against it. Ordered for a stable result; empty when nothing is indexed.
+   */
+  async getIndexedPaths(repoId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectDistinct({ path: t.symbols.path })
+      .from(t.symbols)
+      .where(eq(t.symbols.repoId, repoId))
+      .orderBy(asc(t.symbols.path));
+    return rows.map((r) => r.path);
+  }
+
   /** Cached symbols restricted to the given file paths. */
   async getCachedSymbolsForFiles(repoId: string, paths: string[]): Promise<CachedSymbolRow[]> {
     if (paths.length === 0) return [];

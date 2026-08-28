@@ -43,6 +43,20 @@ export type OnboardingSection = z.infer<typeof OnboardingSection>;
 
 export const Onboarding = z.object({
   sections: z.array(OnboardingSection),
+  /**
+   * The four fields below round-trip through the `onboarding.json` jsonb column,
+   * so every one is `.nullish()`: a document written before a field existed has
+   * no such key at all, and `.nullable()` would still require the key to be
+   * present, which would stop the older document parsing on read.
+   */
+  /** Repository head at generation time. Every file link is a blob URL at THIS sha. */
+  sha: z.string().nullish(),
+  /** Model-cited paths discarded because they are absent from the indexed file set. */
+  dropped_links: z.number().int().nullish(),
+  /** True when the single model call failed and the tour is built from facts alone. */
+  generated_without_model: z.boolean().nullish(),
+  /** False while file hotness is not computed; the tour is then rank-only. */
+  hotness_available: z.boolean().nullish(),
 });
 export type Onboarding = z.infer<typeof Onboarding>;
 

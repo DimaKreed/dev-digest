@@ -779,6 +779,17 @@ export class RepoIntelService implements RepoIntel {
     return out;
   }
 
+  /**
+   * Every distinct path the index holds a symbol for. The indexer persists no
+   * file tree of its own, so this IS the indexed file set consumers verify a
+   * cited path against. Array-returning, so it degrades to `[]` when the flag
+   * is off or nothing is indexed, per the degraded contract in types.ts.
+   */
+  async getIndexedPaths(repoId: string): Promise<string[]> {
+    if (!this.container.config.repoIntelEnabled) return [];
+    return this.repo.getIndexedPaths(repoId);
+  }
+
   /** Top-N files by rank, minus tests/configs/migrations — conventions sample. */
   async getConventionSamples(repoId: string, n: number): Promise<string[]> {
     return this.getTopFilesByRank(repoId, n);

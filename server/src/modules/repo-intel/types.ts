@@ -219,6 +219,13 @@ export interface RepoIntel {
    * T2/T3: persistent `references.decl_file IS NULL`.
    */
   getUnresolvedReferences(repoId: string, files: string[]): Promise<RefRow[]>;
+  /**
+   * Every distinct file path the index holds at least one symbol for. Only
+   * `SUPPORTED_EXT` files are ever indexed, so a markdown or config path is
+   * legitimately absent from this set. `[]` when degraded.
+   */
+  getIndexedPaths(repoId: string): Promise<string[]>;
+
   /** Top-N file paths by rank, filtered of tests/configs. */
   getConventionSamples(repoId: string, n: number): Promise<string[]>;
 

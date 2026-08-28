@@ -20,6 +20,22 @@ names and formatting the lesson expects. Two traps: the removals span BOTH `vend
 and one of them dropped a DB column, so restoring needs a NEW migration, not a revert.
 _2026-07-30_
 
+**Counterpart — the feature may be pre-wired FORWARD rather than stripped, and `git log` will not
+show it.** Project Context looked like greenfield work. It was not: `## Project context` was already
+a live section in `reviewer-core/src/prompt.ts:150` fed by `ReviewInput.specs?: string[]`,
+`PromptAssembly.specs` and `RunTrace.specs_read` already existed in **both** `vendor/shared` copies,
+and the trace drawer already rendered both. Only the producer was missing —
+`server/src/modules/reviews/run-executor.ts` never passed `specs` and hardcoded `specs_read: []`.
+Unlike the parent entry's case there is no removal commit to read: `git log -S "Project context" --
+reviewer-core/src/prompt.ts` returns only the initial squashed snapshot, so history is silent.
+**Rule:** before designing an L01–L08 feature, read the engine's input type
+(`reviewer-core/src/review/run.ts` `ReviewInput`) and the trace contract end to end, not just the
+module you expect to edit. A dormant slot changes the work from "add a section" to "fill a seam" —
+and it is what makes a byte-identical-when-empty criterion writable at all, because the omit-when-
+empty spread already exists.
+_2026-08-27_
+
+
 ### Running a review tool on its own uncommitted diff finds what the test suite structurally cannot
 **Symptom:** `devdigest review` was green on 83 hermetic tests and a manual `--help`. Run
 against its own working tree it immediately reported a CRITICAL: `mcp/package.json` declared
@@ -143,6 +159,16 @@ enumerates the places that need the new name. Nothing validates them:
 "fix" `mcp/`'s absent cross-package CI edge — root `CLAUDE.md` § *Cross-module wiring* makes that
 isolation deliberate.
 _2026-08-26_
+
+**Addendum:** `.claude/**` is not the only uncovered path. **`server/test/**` matches no row in
+either router** — `skill-routes.md` § *Types* lists `server/src/**` paths under `backend`, and
+`pr-self-review/routing.md`'s `arch-onion` lane matches `server/src/modules/**`. So an agent
+writing or reviewing a server test derives *no* skill and has to fall back to the plan's typing
+of the work item; the governing material it needs (`onion-architecture` § *Test seams* — no
+`vi.mock`, the container seam, the `.it.test.ts` split) is reachable only by guessing. Note the
+client side does not have this hole: `ui-tests` covers `client/src/**/*.test.tsx`. When adding a
+router row, check the test paths of every package, not just its source paths.
+_2026-08-28_
 
 ## Tool & Library Notes
 
@@ -342,6 +368,20 @@ match anything has never been tested, and a `0` from it means nothing. The corre
 that package is in `mcp/README.md`.
 _2026-08-13_
 
+**Third counterpart — the pattern compiled, the identifier matched, and the file was never
+searched at all, because ripgrep classified it as binary.**
+`server/src/modules/repo-intel/service.ts` contains a literal NUL byte inside a `${a}\0${b}`
+composite map key. `rg` treats a NUL as the binary sentinel and skips the file, so the `Grep`
+tool returns `0 matches` for a symbol that is demonstrably there. Nothing on stderr, no banner,
+no "binary file matches" line — the result is indistinguishable from a clean sweep of a searched
+file.
+**Rule:** when a probe over a specific known-populated file returns zero, confirm the file was
+searched before concluding anything — `grep -c '' <file>` reports a line count for a text file
+and `rg --files <file>` lists it only if ripgrep will read it. For a file already known to carry
+a NUL, read it through Python or `sed -n` instead. This is the third distinct way a `0` lies in
+this repo, and the only one that leaves no trace anywhere.
+_2026-08-27_
+
 ### A grep probe used as an acceptance criterion counts comment prose, so a header comment must not spell the identifier it forbids
 **Symptom:** a plan shipped probes like `grep -nE "container\.llm|openrouter|reviewPullRequest"
 server/src/modules/smart-diff/*.ts` → expect 0, as the mechanical form of "makes no model call". The
@@ -387,6 +427,23 @@ real. The same claim sat in three workflow comments — `server-unit.yml:96`,
 inlined without invoking the flag. This entry stays as the reason not to reintroduce the
 explanation; it is no longer a live contradiction to work around. _2026-08-26_
 
+
+### A brace-expanded `ls` glob reports "no matches" in Git Bash while the files are on disk
+**Symptom:** `ls {,server/,client/,reviewer-core/,mcp/}specs/[0-9][0-9]-*.md 2>/dev/null || echo
+"no specs yet"` — the exact command
+[.claude/skills/spec-creator/SKILL.md](.claude/skills/spec-creator/SKILL.md) prescribes for
+picking the next spec number — printed `no specs yet` while `specs/01-project-context-documents.md`
+existed and was staged. `Glob **/specs/[0-9][0-9]-*.md` found it instantly. The failure is silent:
+`ls` exits non-zero, the `||` branch fires, and the fallback message reads exactly like a true
+empty result.
+**Rule:** never derive a repo-wide count or a next-free-number from a brace-expanded shell glob
+here — use the `Glob` tool, which does not go through the shell. This one matters more than a
+normal tooling quirk because the wrong answer is not an error but a **collision**: two specs
+claiming the same `NN`, which the whole `AC-NN` traceability chain assumes is unique. The
+`spec-writer` agent caught it only because it re-derives the number itself instead of trusting
+the briefing handed to it — that redundancy is load-bearing, not belt-and-braces.
+_2026-08-27_
+
 ## Recurring Errors & Fixes
 
 ## Session Notes
@@ -413,3 +470,14 @@ shells out to fastlist for Windows process enumeration — so a command that lis
 processes may still trip it. If a second Device Guard block ever names `fastlist`, that is the
 source, not pnpm itself.
 _2026-08-03_
+
+### Three run-trace fields are persisted but never rendered — is the drawer or the contract wrong?
+`RunTrace.context_docs`, `RunTrace.context_skipped` (`server/src/vendor/shared/contracts/trace.ts:122,127`)
+and `PromptAssembly.specs_tokens` (`:53`) are written on both the success and the failure path, and
+mirrored in the client copy — but `TraceBody.tsx` reads only `trace.specs_read` (`:41,:44`). So
+SPEC-01's per-document token sizes and its skip reasons reach a human only from the raw trace JSON
+or as run-log lines, which is thinner than the criteria that motivated them intended.
+Either the drawer gains three rows, or the contract is carrying data nobody consumes. Worth deciding
+before a fourth field is added on the same assumption. Surfaced by `doc-writer` while writing
+`server/docs/project-context.md`.
+_2026-08-27_

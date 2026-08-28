@@ -18,7 +18,7 @@ flowchart LR
   CLONE["git clone / fetch"] --> WALK["walk.ts<br/>discover source files"]
   WALK --> AST["ast-grep adapter<br/>symbols + references"]
   AST --> EDGES["import graph<br/>(dependency-cruiser)"]
-  EDGES --> RANK["rank.ts<br/>PageRank + git hotness → file rank"]
+  EDGES --> RANK["rank.ts<br/>PageRank → file rank<br/>(hotness = 0, Option B)"]
   RANK --> MAP["repo-map.ts<br/>compact repo skeleton (cached)"]
   AST --> DB[("Postgres<br/>symbols · references · file_edges · file_rank · repo_map_cache")]
   EDGES --> DB

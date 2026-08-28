@@ -11,6 +11,25 @@ Maintained by the [engineering-insights](../.claude/skills/engineering-insights/
 
 ## What Doesn't Work
 
+### A module that reads a pull request cannot be tested hermetically — `reviewRepo` is not a `ContainerOverrides` key, so its criteria land in the Docker lane
+**Symptom:** a plan put nine of `modules/brief`'s criteria in the hermetic
+`server/test/brief.test.ts` and they could not go there. Anything reading a pull request, its
+intent, its files or its workspace settings goes through `container.reviewRepo`, which is built
+from `db` and has no override slot: `ContainerOverrides` (`src/platform/container.ts:60-77`)
+exposes `llm`, `repoIntel`, `depgraph`, `tokenizer`, `httpFetcher`, `conventions`, `context`,
+`onboarding` and `brief` — the four repository ports there are the ones somebody needed, and
+`reviewRepo` was never added. `vi.mock` is banned in this package, so there is no way round it.
+`brief.test.ts` ended up holding 1 of the 20 criteria its plan assigned it; the other 19 run
+only in `brief.it.test.ts`.
+**Rule:** when planning a new slice's test split, check `ContainerOverrides` *first* and assume
+every criterion needing a pull-request row is integration-only. Two ways to keep coverage on a
+Docker-less runner: keep the real logic in ring-0 helpers and test those directly with no
+container at all (`fitToBudget`, `verifyRefs`, `summariseBlast` are tested this way in
+`server/test/brief.test.ts`), or add the missing override key — one line, matching the four
+already there. Until one of them happens, a green `server-unit.yml` says nothing about whether
+the slice ever calls its model. `src/platform/container.ts:60-77`
+_2026-08-28_
+
 ### `repo_index_state.status` means "nothing threw", not "the data is there" — never branch a UI state on it
 **Symptom:** `status: 'full'`, `files_indexed: 548`, and `file_edges` empty. Every consumer that
 depends on the graph — `decl_file` resolution, `file_rank`, blast radius — returned nothing, and
@@ -91,6 +110,32 @@ once the service is typed against the import.
 `src/modules/diff-review/service.ts` · `src/modules/blast/notes-service.ts`
 _2026-08-14_
 
+**Addendum:** the same rule bites when the thing you want is a sibling's *derived* value rather
+than a constant or a row. `modules/brief` needed the blast-radius summary that
+`modules/blast/service.ts` already renders; importing it is blocked, so the fourth legal shape
+is to re-derive it — declare a narrow port over the shared facade (`BriefIntelReads` names two
+of `container.repoIntel`'s eleven methods, `src/modules/brief/ports.ts:120`) and render the
+summary again in your own ring-0 helper (`summariseBlast`, `src/modules/brief/helpers.ts`).
+The duplication is the rule working, not a smell — but the two renderings can now drift, so say
+in the helper's docblock which sibling it parallels.
+_2026-08-28_
+
+### `attachCountsByPath` is "attached by any AGENT", not the repository's whole attached set — skill attachments are invisible to it
+**Symptom:** a consumer wanting "the project-context documents attached in this repository"
+reaches for `ContextRepository.attachCountsByPath(repoId)` and the port comment
+(`src/modules/context/ports.ts:87`) is accurate — "How many AGENTS attach each path". The
+implementation selects from `agentContextFiles` alone
+(`src/modules/context/repository.ts:134-140`); `skillContextFiles` is never unioned in. So a
+document attached only to a skill is silently missing, and any caller reasoning about "the
+repository's attached documents" is reasoning about a subset.
+**Rule:** if you need the full set, union both tables — do not assume this method is it. If a
+subset is acceptable, say so in your own port's docblock rather than repeating the broader
+phrase, or the next reader inherits the wrong mental model. `modules/brief` takes the subset
+deliberately and records why in `src/modules/brief/ports.ts`. Note SPEC-01's injection path
+reads *both* (agent attachments then each enabled skill's), so the two readings of "attached"
+already coexist in this codebase.
+_2026-08-28_
+
 ### `server/` now has its own first `db.transaction()`, so the onion skill's "expect 0 today" probe is stale
 **Symptom:** `.claude/skills/onion-architecture/SKILL.md` states "There are currently **zero**
 `.transaction(` calls in `server/`" and its H9 grep probe reads `rg -n '\.transaction\(' src` —
@@ -166,7 +211,52 @@ arriving through `Container`. Reviewed and ruled compliant, not merely tolerated
 `src/modules/smart-diff/ports.ts:51` · `src/modules/smart-diff/routes.ts:24`
 _2026-08-08_
 
+
+### Config normalisation in `platform/config.ts` does not validate containment — the adapter does, so a bad root fails per-request, not at boot
+**Symptom:** `DEVDIGEST_CONTEXT_ROOTS=../..` is accepted by `parseContextRoots`
+(`server/src/platform/config.ts:75-81`): it trims, strips a leading `./` and trailing slashes, and
+drops empties — but nothing rejects a `..` segment or an absolute path. The server boots clean and
+the misconfiguration surfaces later as a 500 on `GET /repos/:id/context`, thrown by
+`SimpleGitClient.listFiles`'s `path escapes the repo clone` guard.
+**Rule:** this is the house split, not an oversight — `config.ts` normalises shape, adapters own
+containment, and the guard is deliberately the single enforcement point so it cannot exist twice.
+So when adding a path-shaped env var, do **not** add a second containment check in `config.ts`;
+instead expect the failure at first use and say so in `.env.example`. If you want it to fail at boot
+you are adding a *new* rule, and it belongs next to the adapter's guard rather than duplicating it.
+_2026-08-27_
+
+
+### `DegradedReason` declares `flag_off`, but nothing in `server/src` ever produces it
+**Symptom:** a new module needed to tell "repo-intel is switched off" apart from "the index
+failed", and `DegradedReason` (`src/modules/repo-intel/types.ts:27`) offers exactly that value.
+Branching on it never fired. Grepping `'flag_off'` across `server/src` returns the declaration
+and consumers — no producer. The read methods short-circuit on the flag before they reach the
+point where they would stamp a reason, so the disabled case arrives looking like empty data.
+**Rule:** a consumer that must distinguish the disabled flag has to be handed
+`config.repoIntelEnabled` directly; it cannot recover it from the facade's own degradation
+signal. Keep the `degradedReason === 'flag_off'` branch as well — it costs nothing and becomes
+correct the day the pipeline starts emitting it — but never let it be the only path.
+Generalisation worth carrying: a union member that no code path constructs is not a contract,
+it is a comment, and `tsc` will never tell you which is which.
+_2026-08-27_
+
 ## Tool & Library Notes
+
+### A model schema handed to `completeStructured` may not carry `.default()` or `.transform()` — its Zod input and output types must be identical
+**Symptom:** mirroring the persisted contract into the model contract looked obvious and would
+not compile. `StructuredRequest<T>` types its schema as `ZodType<T, ZodTypeDef, T>`
+(`src/vendor/shared/adapters.ts:55-70`), so input and output must be the same type. A
+`z.array(...).default([])` makes the input optional and the output required, the two `T`s stop
+matching, and the schema is rejected at the call site rather than at the schema definition —
+so the error points at `completeStructured`, not at the field that caused it.
+**Rule:** keep the two schemas separate on purpose. The **model** schema is strict, every field
+required, no defaults — which also matches OpenAI's `strict: true` json_schema mode, where
+optional keys are forbidden anyway (`src/adapters/llm/openai.ts:103-106`). Absent-key tolerance
+belongs on the **persisted** contract instead, where a document round-tripping through jsonb
+needs `.nullish()` and `.default([])` to parse older rows (root `insights.md:97-106`). Writing
+one schema for both jobs is the mistake. See `PrBriefGeneration` beside `PrBrief`,
+`src/modules/brief/ports.ts`.
+_2026-08-28_
 
 ### dependency-cruiser hides `import type` unless `tsPreCompilationDeps` is on, and that is how DI calls go unresolved
 **Symptom:** `file_edges` had 977 rows and none of them type-only. `pipeline/full.ts` calls
@@ -206,6 +296,36 @@ in TypeScript. Widening one is a no-migration, three-file edit: the `enum:` arra
 converse is the trap — *narrowing* one also generates no migration, so rows keep values the types
 now claim are impossible, and the next `Zod.parse` on read throws on real data.
 _2026-08-03_
+
+
+### Windows refuses unprivileged FILE symlinks but allows directory junctions — gate the case, never absorb it
+**Symptom:** a containment test that must prove a symlink pointing outside the clone is neither read
+nor listed cannot create its fixture: `symlink(target, link)` fails `EPERM` on this box, while
+`symlink(dir, link, 'junction')` succeeds. The tempting repair is to fold the two cases into one
+assertion — `expect(fileLinked || dirLinked).toBe(true)` — which turns a case that never executed
+into a green tick.
+**Rule:** probe the capability once at module scope and gate with `canFileSymlink ? it : it.skip`
+plus a `console.warn`, so the runner prints `[adapters] file symlinks unavailable (EPERM) — the
+symlinked-FILE case is SKIPPED` and the skip is visible in the lane summary. Keep the
+directory-junction case separate and unconditional — it exercises the same
+`if (entry.isSymbolicLink()) continue;` guard, which does not branch on file-vs-directory, so local
+coverage stays real while the file case runs on Linux CI. `server/test/adapters.test.ts:114-135`
+(the gate) and `:265-268` (the junction fixture, which is a plain symlink on Linux).
+_2026-08-27_
+
+
+### `pnpm typecheck` never looks at `server/test/` — a type error there ships silently
+**Symptom:** `tsconfig.json`'s `include` is `src/**/*.ts` only, so `tsc --noEmit` compiles no test
+file. vitest transpiles rather than type-checks, so nothing in either CI lane reads test types
+either. There is already a live example: `MockLLMProvider`'s constructor is typed
+`'openai' | 'anthropic'` (`src/adapters/mocks.ts`) while `test/conventions.it.test.ts` passes
+`'openrouter'` — an error that has never been reported because no tool is looking.
+**Rule:** a green `pnpm typecheck` says nothing about the tests. When a test needs a shape it
+does not yet have — a wider provider union, a new override key — the compiler will not stop you
+and the suite will still pass; the mismatch surfaces later as a runtime surprise in an unrelated
+change. Either widen the mock deliberately as its own change, or route around it and say so.
+Do not read a passing typecheck as coverage of `test/`.
+_2026-08-27_
 
 ## Recurring Errors & Fixes
 

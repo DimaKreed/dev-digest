@@ -93,3 +93,14 @@ memory, skills, compose) are **intentional scaffolding, not dead code**. Never c
   criteria with `AC-NN` ids, and the `draft → approved → implemented` gate
 - [specs/](specs/) — **cross-module** specs. Single-module ones live in that module's `specs/`;
   the `NN` counter is shared by all five directories, so `SPEC-07` is unambiguous repo-wide
+- [specs/01-project-context-documents.md](specs/01-project-context-documents.md) — SPEC-01,
+  Project Context: repository markdown hand-attached to agents and skills, read per run and
+  injected as the untrusted `## Project context` block, with the read set named in the trace
+- [specs/02-onboarding-generator.md](specs/02-onboarding-generator.md) — SPEC-02, Onboarding
+  Generator: five fixed sections per repo from deterministic repo-intel facts plus one structured
+  model call, with link verification and an honest banner when the index, the key or the commit
+  does not match
+- [specs/03-pr-brief-card.md](specs/03-pr-brief-card.md) — SPEC-03, PR Brief: one structured model
+  call per PR state over intent, blast, diff stats, the linked issue and attached specs, cached on
+  head sha plus model, rendered on the Overview tab with grounded risks and a clickable review
+  focus list

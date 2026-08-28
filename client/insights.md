@@ -71,6 +71,22 @@ there's no child to delegate to, defer with `requestAnimationFrame` (the fix now
 re-fire, and a URL param that doesn't change won't do it on its own.
 _2026-07-30_
 
+
+### A case-insensitive-looking regex matcher can pass only because i18n upper-cased the other cell
+**Symptom:** `getByText(/spec/)` asserted a document's type badge and passed for a year's worth of
+runs — but only because the badge came from an i18n key rendering `SPEC` in caps, so the
+case-sensitive regex matched the *directory* cell alone. The moment the badge became raw data
+(`specs`), the same query threw `Found multiple elements with the text: /spec/`, because a
+top-level document legitimately shows the same string in the directory column and the type column.
+The test had never asserted what its name claimed.
+**Rule:** when two columns can hold the same string, do not reach for `getByTestId` or a scoped
+`within()` — both restore green while leaving the columns indistinguishable, so the test would pass
+against an implementation that badged the wrong value. Change the **fixture** so the two values
+differ: a document at `specs/api/public.md` has `dir` `specs/api` and a badge of `specs`, and exact
+`getByText("specs/api")` / `getByText("specs")` then assert the relationship instead of coinciding
+with it. `src/app/repos/[repoId]/context/_components/ContextView/ContextView.test.tsx`
+_2026-08-27_
+
 ## Codebase Patterns
 
 ### Run-level data reaches the review-run header by joining on `run_id` in FindingsTab — not by extending `ReviewRecord`
@@ -196,6 +212,20 @@ it, guarded by "does not leak a click in the panel to a clickable ancestor" in i
 _2026-08-01_
 _2026-07-30_
 
+
+### A next-intl key that already holds a string cannot also hold a nested object, and the obvious fix is a PR-gate CRITICAL
+**Symptom:** `messages/en/onboarding.json` binds `"sections": "Sections"`. A per-section title
+lookup keyed by kind wants `sections.overview`, `sections.architecture`, … — an object at the
+same key. next-intl cannot hold both, so one of the two has to move. Deleting the scalar is the
+tempting fix and it is blocked: the eight scaffolding namespaces are protected by root
+`CLAUDE.md` § *Do not touch*, and a removed key trips `do-not-touch-deleted`
+(`.claude/skills/pr-self-review/invariants.md:19`).
+**Rule:** when a scaffolding namespace already spells the noun you want as a container, pick a
+different container name — `sectionTitles.<kind>` here — and leave the scalar untouched. Check
+this before writing the component, not after: the collision is invisible at author time
+(the JSON is valid either way) and surfaces as a `t()` returning the key path at render.
+_2026-08-27_
+
 ## Tool & Library Notes
 
 ### Anything added to the Showcase gallery must render with **no** providers
@@ -249,3 +279,17 @@ _2026-07-30_
 ## Session Notes
 
 ## Open Questions
+
+### An absent `availability` reads as "can generate" on the PR brief card and as "cannot" on the onboarding view — pick deliberately
+**Symptom:** two features now answer the same question opposite ways.
+`OnboardingView.tsx:99` uses `availability?.can_generate ?? false`; `PrBriefCard.tsx` uses
+`?? true`. Both are defensible in place — on the onboarding page availability is gated behind a
+loaded response so a false default only briefly hides a button, whereas on the PR card the same
+default would permanently hide the call to action on any response predating the field. Neither
+is wrong; the pair is just undocumented, so the third feature will pick by coin flip.
+**Rule:** when adding a capability gate, state which failure you are choosing — offering an
+action that will 503, or hiding an action that would have worked. Prefer `?? true` when the
+field may be absent from a stored or older response, `?? false` when absence means the check
+has not run yet. Whichever you pick, say so in the component, and reconcile these two if a
+convention is ever settled.
+_2026-08-28_

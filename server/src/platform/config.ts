@@ -26,6 +26,12 @@ const EnvSchema = z.object({
   // Note: even when on, sections only populate once the repo is indexed; an
   // unindexed repo degrades gracefully. Per-agent override: agents.repo_intel.
   REPO_INTEL_ENABLED: z.string().optional(),
+  // Project-context document discovery: comma-separated directory NAMES,
+  // matched at any depth below the clone root. Default `specs,docs,insights`,
+  // so `server/specs/` and `client/docs/` are found without being configured
+  // one by one. Names rather than a glob on purpose — a document's displayed
+  // type IS the matched directory's name, and a glob has no name to show.
+  DEVDIGEST_CONTEXT_ROOTS: z.string().optional(),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -37,6 +43,43 @@ const EnvSchema = z.object({
     z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
   ),
 });
+
+/**
+ * One configured project-context search root.
+ *
+ * Declared HERE rather than in `modules/context/` because `platform/**` may
+ * never import `modules/**` (arch rule `c6-platform-no-modules`), and the
+ * config that carries it is platform-owned.
+ *
+ * There is no separate `label`: a document's displayed type IS this directory
+ * name, verbatim. A mapping onto a fixed set of labels used to live here and
+ * was removed — it collapsed every non-default root onto one fallback value, so
+ * `adr/` and `rfc/` displayed identically. With the badge equal to `dir` the
+ * indirection bought nothing but the collision.
+ */
+export type ContextRoot = {
+  /**
+   * The directory NAME to match, at any depth below the clone root — e.g.
+   * `specs` matches `specs/`, `server/specs/` and `packages/x/specs/` alike.
+   * Also the displayed type of every document under it.
+   */
+  dir: string;
+};
+
+/**
+ * The shipped default. Order is not significant: a document beneath two
+ * matching directories is attributed to the NEAREST one, not to whichever root
+ * was configured first.
+ */
+const DEFAULT_CONTEXT_ROOTS = 'specs,docs,insights';
+
+function parseContextRoots(raw: string | undefined): ContextRoot[] {
+  return (raw ?? DEFAULT_CONTEXT_ROOTS)
+    .split(',')
+    .map((s) => s.trim().replace(/^\.?\/+/, '').replace(/\/+$/, ''))
+    .filter((dir) => dir.length > 0)
+    .map((dir) => ({ dir }));
+}
 
 export type AppConfig = {
   databaseUrl: string;
@@ -59,6 +102,12 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /**
+   * Directories searched for attachable project-context markdown, in order.
+   * Independent of `embeddingsEnabled` and `repoIntelEnabled` — discovery is a
+   * direct filesystem read of the clone and never consults the code index.
+   */
+  contextRoots: readonly ContextRoot[];
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -77,5 +126,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    contextRoots: parseContextRoots(parsed.DEVDIGEST_CONTEXT_ROOTS),
   };
 }

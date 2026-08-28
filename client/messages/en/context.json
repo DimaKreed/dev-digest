@@ -10,7 +10,7 @@
   "kb": "{kb}kb",
   "empty": {
     "title": "No spec files yet",
-    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+    "body": "This repository has no markdown under {roots}. Add documents there and they become attachable to any agent or skill."
   },
   "mode": {
     "preview": "preview",
@@ -20,5 +20,43 @@
     "loadError": "Couldn’t load spec",
     "save": "Save",
     "saving": "Saving…"
+  },
+  "missing": "not in the repository",
+  "tooLarge": "too large to attach",
+  "skipped": {
+    "missing": "missing from the clone",
+    "unreadable": "could not be read",
+    "escapes": "resolves outside the clone"
+  },
+  "doc": {
+    "usedBy": "{count, plural, =0 {no agents} one {# agent} other {# agents}}",
+    "tokens": "{count} tokens",
+    "preview": "Preview {name}"
+  },
+  "page": {
+    "crumbLab": "Skills Lab",
+    "crumbContext": "Project Context",
+    "headingPrefix": "Project context · ",
+    "repoFallback": "this repository",
+    "subtitle": "Read-only. Every document below can be attached to an agent or a skill, and is read fresh from the clone on every run.",
+    "columns": {
+      "document": "DOCUMENT",
+      "directory": "DIRECTORY",
+      "type": "TYPE",
+      "usedBy": "ATTACHED BY"
+    },
+    "closePreview": "Close preview"
+  },
+  "tab": {
+    "title": "Project context",
+    "hint": "Attach the documents this prompt should carry. Drag a handle, or focus it and press ↑/↓, to change the order they are injected in.",
+    "attachedCount": "{attached} of {total} attached",
+    "filterPlaceholder": "Filter documents…",
+    "noRepo": "Pick a repository in the sidebar to attach its documents.",
+    "empty": "No documents found in this repository.",
+    "loadError": "Couldn’t load specs",
+    "totalTokens": "{count} tokens in this set",
+    "untrusted": "Injected verbatim as an untrusted ## Project context block on every run.",
+    "dragHandle": "Reorder {name}"
   }
 }
