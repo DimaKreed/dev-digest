@@ -34,6 +34,8 @@ import { ContextRepository } from '../modules/context/repository.js';
 import type { ContextRepositoryPort } from '../modules/context/ports.js';
 import { OnboardingRepository } from '../modules/onboarding/repository.js';
 import type { OnboardingRepositoryPort } from '../modules/onboarding/ports.js';
+import { BriefRepository } from '../modules/brief/repository.js';
+import type { BriefRepositoryPort } from '../modules/brief/ports.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -71,6 +73,7 @@ export interface ContainerOverrides {
   conventions?: ConventionsRepositoryPort;
   context?: ContextRepositoryPort;
   onboarding?: OnboardingRepositoryPort;
+  brief?: BriefRepositoryPort;
 }
 
 export class Container {
@@ -95,6 +98,7 @@ export class Container {
   private _conventionsRepo?: ConventionsRepositoryPort;
   private _contextRepo?: ContextRepositoryPort;
   private _onboardingRepo?: OnboardingRepositoryPort;
+  private _briefRepo?: BriefRepositoryPort;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -136,6 +140,13 @@ export class Container {
     if (this.overrides.onboarding) return this.overrides.onboarding;
     this._onboardingRepo ??= new OnboardingRepository(this.db);
     return this._onboardingRepo;
+  }
+
+  /** PR-brief persistence, behind its port so a test can replace it. */
+  get briefRepo(): BriefRepositoryPort {
+    if (this.overrides.brief) return this.overrides.brief;
+    this._briefRepo ??= new BriefRepository(this.db);
+    return this._briefRepo;
   }
 
   /** Project-context persistence, behind its port so a test can replace it. */

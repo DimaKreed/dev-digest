@@ -279,3 +279,17 @@ _2026-07-30_
 ## Session Notes
 
 ## Open Questions
+
+### An absent `availability` reads as "can generate" on the PR brief card and as "cannot" on the onboarding view — pick deliberately
+**Symptom:** two features now answer the same question opposite ways.
+`OnboardingView.tsx:99` uses `availability?.can_generate ?? false`; `PrBriefCard.tsx` uses
+`?? true`. Both are defensible in place — on the onboarding page availability is gated behind a
+loaded response so a false default only briefly hides a button, whereas on the PR card the same
+default would permanently hide the call to action on any response predating the field. Neither
+is wrong; the pair is just undocumented, so the third feature will pick by coin flip.
+**Rule:** when adding a capability gate, state which failure you are choosing — offering an
+action that will 503, or hiding an action that would have worked. Prefer `?? true` when the
+field may be absent from a stored or older response, `?? false` when absence means the check
+has not run yet. Whichever you pick, say so in the component, and reconcile these two if a
+convention is ever settled.
+_2026-08-28_

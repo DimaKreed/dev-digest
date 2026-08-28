@@ -8,11 +8,18 @@ export interface Line {
   newNo?: number;
 }
 
-/** A file + line range to scroll to and highlight, from `?file=…&line=44-48`. */
+/** A file + line range to scroll to and highlight, from `?file=…&line=44-48`.
+ *
+ *  `start`/`end` are nullable because a target can name a FILE and no line —
+ *  a brief's review-focus entry whose ref carries no line number, from
+ *  `?file=…` with no `?line`. That target still expands the file and scrolls to
+ *  it; it simply tints no row, because there is no row it honestly describes.
+ *  A file-only deep link that did nothing at all was the previous behaviour and
+ *  is the thing this widening exists to fix. */
 export interface DiffTarget {
   path: string;
-  start: number;
-  end: number;
+  start: number | null;
+  end: number | null;
   /** Bumped per navigation so re-selecting the same target scrolls again. */
   nonce: number;
 }
@@ -30,8 +37,17 @@ export function parseLineRange(raw: string | null | undefined): { start: number;
 
 /** Is this rendered line inside the target range? Matches on the NEW side —
  *  findings describe the head version, the same preference `commentTargetFor`
- *  encodes — so deleted lines never match, which is correct. */
-export function lineInRange(ln: Line, start: number, end: number): boolean {
+ *  encodes — so deleted lines never match, which is correct.
+ *
+ *  A null bound matches NOTHING, deliberately: a file-only target has no line
+ *  to tint, and treating "no line" as "every line" would paint the whole file
+ *  as the thing the reader was pointed at. */
+export function lineInRange(
+  ln: Line,
+  start: number | null | undefined,
+  end: number | null | undefined,
+): boolean {
+  if (start == null || end == null) return false;
   return ln.kind !== "hunk" && ln.newNo != null && ln.newNo >= start && ln.newNo <= end;
 }
 

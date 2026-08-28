@@ -90,4 +90,19 @@ export const prBrief = pgTable('pr_brief', {
     .primaryKey()
     .references(() => pullRequests.id, { onDelete: 'cascade' }),
   json: jsonb('json').notNull(),
+  // Reuse key. `headSha` + `model` together decide reusability exactly the way
+  // `pr_intent` states it above: a stored brief is reused only on an exact
+  // match of BOTH, and anything else is stale. Nullable because a row written
+  // before this migration has neither — there are none today, but the column
+  // pair outlives that fact.
+  //
+  // These two duplicate values that are ALSO written inside `json`. That is
+  // deliberate, not redundancy to clean up: the document has to be
+  // self-describing once it leaves the database (AC-09), while the staleness
+  // comparison is a column read that must not deserialise a document to answer.
+  headSha: text('head_sha'),
+  model: text('model'),
+  // Event time, so `timestamptz`. `defaultNow()` is safe to add to this table
+  // without a rewrite concern because `pr_brief` has never been written to.
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 });

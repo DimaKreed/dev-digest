@@ -1,6 +1,6 @@
 # Spec: PR Brief — a generated merge-risk brief on the pull request Overview tab
 Spec ID: SPEC-03
-Status: approved
+Status: implemented
 
 ## Problem and user
 
@@ -129,11 +129,21 @@ and the Agent runs tab is the page's only findings surface (`client/insights.md:
 
 ### Grounding
 
-- **AC-13** — WHEN the model names a file, symbol or endpoint that is not present in the input
-  actually assembled for that call, the system shall drop that risk or review-focus entry, and
+- **AC-13** — WHEN a risk or review-focus entry carries a structured file reference whose path is
+  not present in the input actually assembled for that call, the system shall drop that entry, and
   shall record the number of entries dropped in the stored brief and in the generation result, so
   the drop is observable rather than silent. (Precedent for verify-and-report:
   `server/src/modules/blast/notes-service.ts:90-99`.)
+
+  *Narrowed 2026-08-28, after approval, at the stage-7 gate. The criterion originally read "a
+  file, symbol or endpoint". A symbol or an endpoint appears only inside freeform prose —
+  `risk.title`, `risk.explanation`, `focus.reason` — which carries no machine-readable field to
+  verify against and never becomes a deep link, so the original wording was not checkable without
+  a contract change adding `symbols[]` and `endpoints[]` to the model schema. The structured
+  `{ path, line }` reference of AC-11 is the whole of what becomes clickable, and the stage-7
+  security review confirmed that verifying it closes the reachable path from model output to a
+  deep link. Ungrounded claims in prose remain possible and are an accepted property, recorded in
+  § Untrusted inputs. Superseding this narrowing means a new spec, not an edit here.*
 
 ### Storage, reuse and staleness
 

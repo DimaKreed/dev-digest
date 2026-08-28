@@ -32,5 +32,33 @@
     "blame": "blame",
     "noHistory": "No history available for this line.",
     "noCommits": "No commits found for this line."
+  },
+  "card": {
+    "riskLevel": {
+      "high": "High merge risk",
+      "medium": "Medium merge risk",
+      "low": "Low merge risk"
+    },
+    "what": "What this change does",
+    "why": "Why it is risky",
+    "reviewFocus": "Read these first",
+    "noFocus": "No particular place flagged to read first.",
+    "degraded": "Sources the brief could not fully read",
+    "dropped": "{count} ungrounded entries dropped",
+    "generating": "Generating the brief…",
+    "missingKey": "Generating a brief needs a key for the model configured for this feature. Add one in Settings and the action becomes available.",
+    "regenerate": "Regenerate brief",
+    "tokens": "{tokensIn} in · {tokensOut} out",
+    "unpriced": "Unpriced",
+    "empty": {
+      "title": "No brief for this pull request yet",
+      "body": "Generating one assembles this pull request's intent, what it reaches, its diff stats and its linked context into a single paid model call, and stores the result.",
+      "cta": "Generate brief"
+    },
+    "error": {
+      "title": "The brief could not be loaded",
+      "body": "Reason: {reason}",
+      "retry": "Retry"
+    }
   }
 }

@@ -20,3 +20,6 @@ Not here:
 - [Onboarding Generator](./onboarding-generator.md) — why the tour is a blocking POST rather
   than a job, why the derivation is a pure ring-0 kernel, and why the four degradation cases
   stay apart.
+- [PR Brief](./pr-brief-card.md) — why the card shows the brief's own `risk_level` rather than
+  a verdict, why grounding was narrowed to paths only, and why the brief reaches blast radius
+  through its own port instead of the blast service.

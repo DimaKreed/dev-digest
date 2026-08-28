@@ -155,9 +155,11 @@ export type PriorPr = z.infer<typeof PriorPr>;
 /**
  * Response of `GET /pulls/:id/blast`.
  *
- * Extends `BlastRadius` rather than editing it: that contract is a member of
- * `PrBrief` and is parsed from stored documents, so a new required field there
- * would break every one of them.
+ * Extends `BlastRadius` rather than editing it. `PrBrief` no longer composes
+ * that contract (SPEC-03 redefined `PrBrief` as the brief document), but the
+ * reason to extend rather than edit stands on its own: `BlastRadius` is the
+ * shape the blast tab is built against and a new required field there would
+ * break every consumer of it.
  */
 export const BlastRadiusResponse = BlastRadius.extend({
   downstream: z.array(DownstreamNode),

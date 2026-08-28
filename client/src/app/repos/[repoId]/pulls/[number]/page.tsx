@@ -27,12 +27,13 @@ import {
   usePrIntent,
   useDeriveIntent,
 } from "../../../../../lib/hooks/reviews";
+import { usePrBrief, useGenerateBrief } from "../../../../../lib/hooks/brief";
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
 import { githubPrUrl } from "../../../../../lib/github-urls";
 import { parseSeverity, latestRunPerAgent, countBySeverity, runMatches } from "@/lib/severity";
 import { parseLineRange, type DiffTarget } from "@/components/diff-viewer";
-import type { FindingRecord, Severity } from "@devdigest/shared";
+import type { BriefFileRef, FindingRecord, Severity } from "@devdigest/shared";
 
 export default function PRDetailPage() {
   const params = useParams<{ repoId: string; number: string }>();
@@ -101,6 +102,26 @@ export default function PRDetailPage() {
   // Derived PR intent — one hook for BOTH tab mounts; TanStack Query dedupes.
   const { data: intent, isLoading: intentLoading } = usePrIntent(prId);
   const deriveIntent = useDeriveIntent(prId);
+
+  // The merge-risk brief. A query for the READ (it makes no model call and
+  // costs nothing) and a MUTATION for the generation, because a query refires
+  // on window refocus and on remount and this one is paid (AC-38).
+  const {
+    data: briefData,
+    isLoading: briefLoading,
+    error: briefError,
+  } = usePrBrief(prId);
+  const generateBrief = useGenerateBrief(prId);
+  // Whichever failed most recently is what the card names as its reason. The
+  // generation error outranks the read error: it is the one the user just
+  // caused, and a 503 `missing_model_key` has to reach the reader as itself.
+  const briefFailure = generateBrief.error ?? briefError;
+  const briefReason =
+    briefFailure instanceof ApiError
+      ? briefFailure.message
+      : briefFailure
+        ? String(briefFailure)
+        : null;
   // Findings the reviewer marked out of scope, which the engine deferred out of
   // the score. Taken from the newest run per agent for the same reason the
   // severity tally is: a re-run would otherwise list its findings twice.
@@ -144,10 +165,18 @@ export default function PRDetailPage() {
 
   const lineRange = parseLineRange(search.get("line"));
   const targetFile = search.get("file");
-  const diffTarget: DiffTarget | null =
-    targetFile && lineRange
-      ? { path: targetFile, start: lineRange.start, end: lineRange.end, nonce: targetNonce }
-      : null;
+  // A file with no `?line` is a REAL target (AC-30): the diff tab opens it,
+  // expands it and scrolls to it, and tints no row because there is no row the
+  // link honestly describes. Before `DiffTarget.start`/`.end` were widened to
+  // `number | null` this branch produced `null` and the deep link was inert.
+  const diffTarget: DiffTarget | null = targetFile
+    ? {
+        path: targetFile,
+        start: lineRange?.start ?? null,
+        end: lineRange?.end ?? null,
+        nonce: targetNonce,
+      }
+    : null;
 
   const openFinding = (findingId: string) => {
     bumpNonce();
@@ -155,11 +184,25 @@ export default function PRDetailPage() {
     // off-screen and the click would silently go nowhere.
     setParams({ tab: "findings", finding: findingId, severity: null, file: null, line: null });
   };
-  const openFile = (file: string, startLine: number, endLine: number) => {
+  /**
+   * Open the diff tab at a file, optionally at a line range.
+   *
+   * The line is optional so that one entry point serves both callers: a finding
+   * or a blast-radius row always has a line, a brief's review-focus entry may
+   * not. Omitting it clears `?line` rather than writing a made-up number, so a
+   * reload or a shared link reopens exactly the same target (AC-29/AC-30).
+   */
+  const openFile = (file: string, startLine?: number | null, endLine?: number | null) => {
     bumpNonce();
-    const line = endLine !== startLine ? `${startLine}-${endLine}` : `${startLine}`;
+    const start = startLine ?? null;
+    const end = endLine ?? start;
+    const line =
+      start == null ? null : end !== start ? `${start}-${end}` : `${start}`;
     setParams({ tab: "diff", file, line, finding: null });
   };
+  /** A brief's review-focus entry, activated. The ref is the model's, already
+   *  verified server-side against the assembled input before it was stored. */
+  const openBriefFocus = (ref: BriefFileRef) => openFile(ref.path, ref.line ?? null);
 
   const repoName = activeRepo?.full_name ?? repoId;
   // The real "owner/repo" (null until the repo is loaded) — used to build
@@ -230,6 +273,14 @@ export default function PRDetailPage() {
             deferredFindings={deferredFindings}
             onRederiveIntent={() => deriveIntent.mutate()}
             rederivingIntent={deriveIntent.isPending}
+            brief={briefData?.brief ?? null}
+            briefStale={briefData?.stale}
+            briefLoading={briefLoading}
+            briefGenerating={generateBrief.isPending}
+            briefError={briefReason}
+            briefAvailability={briefData?.availability ?? null}
+            onGenerateBrief={() => generateBrief.mutate()}
+            onOpenFocus={openBriefFocus}
           />
         )}
 

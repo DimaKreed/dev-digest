@@ -160,6 +160,16 @@ enumerates the places that need the new name. Nothing validates them:
 isolation deliberate.
 _2026-08-26_
 
+**Addendum:** `.claude/**` is not the only uncovered path. **`server/test/**` matches no row in
+either router** — `skill-routes.md` § *Types* lists `server/src/**` paths under `backend`, and
+`pr-self-review/routing.md`'s `arch-onion` lane matches `server/src/modules/**`. So an agent
+writing or reviewing a server test derives *no* skill and has to fall back to the plan's typing
+of the work item; the governing material it needs (`onion-architecture` § *Test seams* — no
+`vi.mock`, the container seam, the `.it.test.ts` split) is reachable only by guessing. Note the
+client side does not have this hole: `ui-tests` covers `client/src/**/*.test.tsx`. When adding a
+router row, check the test paths of every package, not just its source paths.
+_2026-08-28_
+
 ## Tool & Library Notes
 
 ### `tsconfig.json`'s `include` differs per package, so `pnpm typecheck` proves nothing about tests in `server/` or `reviewer-core/`

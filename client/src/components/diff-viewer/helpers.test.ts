@@ -75,4 +75,27 @@ describe("lineInRange", () => {
   it("never matches a hunk header", () => {
     expect(lineInRange({ kind: "hunk", text: "@@ -44,5 +44,5 @@" }, 44, 48)).toBe(false);
   });
+
+  // AC-30 — the file-only deep link (`?file=…` with no `?line`) rests on this
+  // predicate. `DiffTarget.start`/`.end` were widened to `number | null` so the
+  // target can name a file alone; the two cases below are the mechanism.
+  it("AC-30 — a null bound tints NO line, rather than the whole file", () => {
+    const line = { kind: "add", text: "", newNo: 45 } as const;
+
+    // The failure this guards is the tempting reading of "no line": treating an
+    // absent bound as an open range would paint every row in the file as the
+    // thing the reader was pointed at.
+    expect(lineInRange(line, null, null)).toBe(false);
+    expect(lineInRange(line, 44, null)).toBe(false);
+    expect(lineInRange(line, null, 48)).toBe(false);
+    expect(lineInRange(line, undefined, undefined)).toBe(false);
+  });
+
+  it("AC-30 — widening the bounds did not stop a real range matching", () => {
+    // The other half: a null-tolerant predicate that returned `false` for
+    // everything would satisfy the case above and silently break every existing
+    // `?line=` deep link.
+    expect(lineInRange({ kind: "add", text: "", newNo: 45 }, 44, 48)).toBe(true);
+    expect(lineInRange({ kind: "ctx", text: "", oldNo: 48, newNo: 48 }, 44, 48)).toBe(true);
+  });
 });

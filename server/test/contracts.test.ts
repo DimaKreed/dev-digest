@@ -21,6 +21,7 @@ import {
   Settings,
   Repo,
   PrDetail,
+  PrBrief,
 } from '@devdigest/shared';
 
 /**
@@ -364,5 +365,77 @@ describe('platform DTOs', () => {
         commits: [],
       }),
     ).not.toThrow();
+  });
+});
+
+/**
+ * SPEC-03 (PR Brief) — the two criteria that are properties of the CONTRACT
+ * rather than of a route. Spec-first: both are expected to fail until
+ * `PrBrief` is redefined, and neither was read off an implementation.
+ *
+ * `pr_brief.json` is a jsonb column holding one whole document, so the legacy
+ * case below is the same hazard `RunStats` hit when `cost_usd` came back as
+ * `.nullable()`: an absent KEY still fails `.nullable()`, and only `.nullish()`
+ * (or a `.default()`) keeps an older document parsing — root
+ * `insights.md:97-106`.
+ */
+describe('SPEC-03 PrBrief document', () => {
+  it('AC-12 — a stored document lacking every field this spec introduces still parses, the fields treated as absent', () => {
+    const legacy = PrBrief.parse({
+      risk_level: 'medium',
+      what: 'Adds a per-route rate limit.',
+      why: 'It fronts every paid route.',
+    });
+
+    expect(legacy.risk_level).toBe('medium');
+    // Absent, not an error — and absent lists read as empty rather than
+    // undefined, so no consumer has to branch on the difference.
+    expect(legacy.risks).toEqual([]);
+    expect(legacy.review_focus).toEqual([]);
+    expect(legacy.degraded_sources).toEqual([]);
+    expect(legacy.head_sha ?? null).toBeNull();
+    expect(legacy.model ?? null).toBeNull();
+    expect(legacy.dropped_entries ?? null).toBeNull();
+    expect(legacy.usage ?? null).toBeNull();
+  });
+
+  it('AC-11 — a file reference is a path plus an OPTIONAL line, never a preformatted `path:line` string', () => {
+    const parsed = PrBrief.parse({
+      risk_level: 'high',
+      what: 'w',
+      why: 'y',
+      risks: [
+        {
+          title: 'A risk with a located ref and an unlocated one',
+          explanation: 'e',
+          severity: 'high',
+          refs: [
+            { path: 'src/pay.ts', line: 12 },
+            // A reference with no line must be representable — that is the
+            // whole reason the spec deviates from `Risk.file_refs: string[]`.
+            { path: 'src/config.ts' },
+          ],
+        },
+      ],
+      review_focus: [
+        { label: 'The limiter registration', ref: { path: 'src/pay.ts', line: 12 }, reason: 'r' },
+      ],
+    });
+
+    const refs = parsed.risks[0]!.refs;
+    expect(refs[0]).toMatchObject({ path: 'src/pay.ts', line: 12 });
+    expect(refs[1]!.path).toBe('src/config.ts');
+    expect(refs[1]!.line ?? null).toBeNull();
+
+    // Each part is verifiable on its own, so the joined string form is not a
+    // valid reference.
+    expect(() =>
+      PrBrief.parse({
+        risk_level: 'high',
+        what: 'w',
+        why: 'y',
+        risks: [{ title: 't', explanation: 'e', severity: 'high', refs: ['src/pay.ts:12'] }],
+      }),
+    ).toThrow();
   });
 });

@@ -113,6 +113,13 @@
       "when": 1787837571066,
       "tag": "0015_boring_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787931974850,
+      "tag": "0016_eager_wendell_rand",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,25 @@ Maintained by the [engineering-insights](../.claude/skills/engineering-insights/
 
 ## What Doesn't Work
 
+### A module that reads a pull request cannot be tested hermetically — `reviewRepo` is not a `ContainerOverrides` key, so its criteria land in the Docker lane
+**Symptom:** a plan put nine of `modules/brief`'s criteria in the hermetic
+`server/test/brief.test.ts` and they could not go there. Anything reading a pull request, its
+intent, its files or its workspace settings goes through `container.reviewRepo`, which is built
+from `db` and has no override slot: `ContainerOverrides` (`src/platform/container.ts:60-77`)
+exposes `llm`, `repoIntel`, `depgraph`, `tokenizer`, `httpFetcher`, `conventions`, `context`,
+`onboarding` and `brief` — the four repository ports there are the ones somebody needed, and
+`reviewRepo` was never added. `vi.mock` is banned in this package, so there is no way round it.
+`brief.test.ts` ended up holding 1 of the 20 criteria its plan assigned it; the other 19 run
+only in `brief.it.test.ts`.
+**Rule:** when planning a new slice's test split, check `ContainerOverrides` *first* and assume
+every criterion needing a pull-request row is integration-only. Two ways to keep coverage on a
+Docker-less runner: keep the real logic in ring-0 helpers and test those directly with no
+container at all (`fitToBudget`, `verifyRefs`, `summariseBlast` are tested this way in
+`server/test/brief.test.ts`), or add the missing override key — one line, matching the four
+already there. Until one of them happens, a green `server-unit.yml` says nothing about whether
+the slice ever calls its model. `src/platform/container.ts:60-77`
+_2026-08-28_
+
 ### `repo_index_state.status` means "nothing threw", not "the data is there" — never branch a UI state on it
 **Symptom:** `status: 'full'`, `files_indexed: 548`, and `file_edges` empty. Every consumer that
 depends on the graph — `decl_file` resolution, `file_rank`, blast radius — returned nothing, and
@@ -90,6 +109,32 @@ the row shape in `ports.ts`. Run `pnpm arch` immediately after writing `ports.ts
 once the service is typed against the import.
 `src/modules/diff-review/service.ts` · `src/modules/blast/notes-service.ts`
 _2026-08-14_
+
+**Addendum:** the same rule bites when the thing you want is a sibling's *derived* value rather
+than a constant or a row. `modules/brief` needed the blast-radius summary that
+`modules/blast/service.ts` already renders; importing it is blocked, so the fourth legal shape
+is to re-derive it — declare a narrow port over the shared facade (`BriefIntelReads` names two
+of `container.repoIntel`'s eleven methods, `src/modules/brief/ports.ts:120`) and render the
+summary again in your own ring-0 helper (`summariseBlast`, `src/modules/brief/helpers.ts`).
+The duplication is the rule working, not a smell — but the two renderings can now drift, so say
+in the helper's docblock which sibling it parallels.
+_2026-08-28_
+
+### `attachCountsByPath` is "attached by any AGENT", not the repository's whole attached set — skill attachments are invisible to it
+**Symptom:** a consumer wanting "the project-context documents attached in this repository"
+reaches for `ContextRepository.attachCountsByPath(repoId)` and the port comment
+(`src/modules/context/ports.ts:87`) is accurate — "How many AGENTS attach each path". The
+implementation selects from `agentContextFiles` alone
+(`src/modules/context/repository.ts:134-140`); `skillContextFiles` is never unioned in. So a
+document attached only to a skill is silently missing, and any caller reasoning about "the
+repository's attached documents" is reasoning about a subset.
+**Rule:** if you need the full set, union both tables — do not assume this method is it. If a
+subset is acceptable, say so in your own port's docblock rather than repeating the broader
+phrase, or the next reader inherits the wrong mental model. `modules/brief` takes the subset
+deliberately and records why in `src/modules/brief/ports.ts`. Note SPEC-01's injection path
+reads *both* (agent attachments then each enabled skill's), so the two readings of "attached"
+already coexist in this codebase.
+_2026-08-28_
 
 ### `server/` now has its own first `db.transaction()`, so the onion skill's "expect 0 today" probe is stale
 **Symptom:** `.claude/skills/onion-architecture/SKILL.md` states "There are currently **zero**
@@ -196,6 +241,22 @@ it is a comment, and `tsc` will never tell you which is which.
 _2026-08-27_
 
 ## Tool & Library Notes
+
+### A model schema handed to `completeStructured` may not carry `.default()` or `.transform()` — its Zod input and output types must be identical
+**Symptom:** mirroring the persisted contract into the model contract looked obvious and would
+not compile. `StructuredRequest<T>` types its schema as `ZodType<T, ZodTypeDef, T>`
+(`src/vendor/shared/adapters.ts:55-70`), so input and output must be the same type. A
+`z.array(...).default([])` makes the input optional and the output required, the two `T`s stop
+matching, and the schema is rejected at the call site rather than at the schema definition —
+so the error points at `completeStructured`, not at the field that caused it.
+**Rule:** keep the two schemas separate on purpose. The **model** schema is strict, every field
+required, no defaults — which also matches OpenAI's `strict: true` json_schema mode, where
+optional keys are forbidden anyway (`src/adapters/llm/openai.ts:103-106`). Absent-key tolerance
+belongs on the **persisted** contract instead, where a document round-tripping through jsonb
+needs `.nullish()` and `.default([])` to parse older rows (root `insights.md:97-106`). Writing
+one schema for both jobs is the mistake. See `PrBriefGeneration` beside `PrBrief`,
+`src/modules/brief/ports.ts`.
+_2026-08-28_
 
 ### dependency-cruiser hides `import type` unless `tsPreCompilationDeps` is on, and that is how DI calls go unresolved
 **Symptom:** `file_edges` had 977 rows and none of them type-only. `pipeline/full.ts` calls
