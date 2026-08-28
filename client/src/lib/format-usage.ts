@@ -28,7 +28,21 @@ export function formatCost(usd: number | null | undefined): string {
   return `$${out}`;
 }
 
-/** Token in→out summary (e.g. "12k→1.5k"). */
+/**
+ * Counts under 1000 are shown verbatim rather than in thousands. Dividing by
+ * 1000 first rendered every small run as a fabricated zero — 400 tokens became
+ * `0k` and 20 became `0.0k`, which reads as "nothing was sent" — and rounding
+ * pushed 999 up to `1k`. Both are the same failure as a fabricated `$0.00`:
+ * a real measurement displayed as its own absence.
+ *
+ * At or above 1000 the format is unchanged (`8k`, `1.3k`), so existing
+ * expectations still hold.
+ */
+function compactTokens(n: number, decimals: number): string {
+  return n < 1000 ? String(n) : `${(n / 1000).toFixed(decimals)}k`;
+}
+
+/** Token in→out summary (e.g. "12k→1.5k", or "400→20" for a small run). */
 export function formatTokens(tokensIn: number, tokensOut: number): string {
-  return `${(tokensIn / 1000).toFixed(0)}k→${(tokensOut / 1000).toFixed(1)}k`;
+  return `${compactTokens(tokensIn, 0)}→${compactTokens(tokensOut, 1)}`;
 }

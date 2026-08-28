@@ -8,7 +8,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { RunCostBadge } from "./RunCostBadge";
-import { formatCost } from "@/lib/format-usage";
+import { formatCost, formatTokens } from "@/lib/format-usage";
 
 afterEach(cleanup);
 
@@ -39,6 +39,27 @@ describe("formatCost", () => {
   it("returns a dash for null/undefined, not a zero", () => {
     expect(formatCost(null)).toBe("—");
     expect(formatCost(undefined)).toBe("—");
+  });
+});
+
+describe("formatTokens", () => {
+  it.each([
+    [8200, 1300, "8k→1.3k"],
+    [12000, 1500, "12k→1.5k"],
+    [1000, 1000, "1k→1.0k"],
+  ])("keeps the thousands format at or above 1000 (%s, %s)", (tin, tout, expected) => {
+    expect(formatTokens(tin, tout)).toBe(expected);
+  });
+
+  it("shows counts under 1000 verbatim rather than as a fabricated zero", () => {
+    // The bug: dividing first rendered a real 400-token input as "0k", which
+    // reads as "nothing was sent" — the same failure as a fabricated $0.00.
+    expect(formatTokens(400, 20)).toBe("400→20");
+    expect(formatTokens(1, 1)).toBe("1→1");
+  });
+
+  it("does not round 999 up into a thousand", () => {
+    expect(formatTokens(999, 999)).toBe("999→999");
   });
 });
 
