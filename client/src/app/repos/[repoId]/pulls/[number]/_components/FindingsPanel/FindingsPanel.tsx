@@ -8,6 +8,7 @@ import { Toggle, EmptyState } from "@devdigest/ui";
 import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
+import { EvalCaseDialog } from "../EvalCaseDialog";
 import { KEY_TO_ACTION } from "./constants";
 import { visibleFindings } from "./helpers";
 import { s } from "./styles";
@@ -35,6 +36,11 @@ export function FindingsPanel({
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
+  // "Turn into eval case" OPENS AN EDITOR; it does not create anything. A case
+  // whose expected line misses its own diff hunk is dropped by the grounding
+  // gate on every run and can never pass, and the only way to catch that is to
+  // run it — which the dialog can do before Save (SPEC-04 AC-18).
+  const [seedingFindingId, setSeedingFindingId] = React.useState<string | null>(null);
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
@@ -90,10 +96,19 @@ export function FindingsPanel({
               onOpenFile={onOpenFile}
               scrollTo={i === targetIdx ? targetNonce : undefined}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
+              onTurnIntoEvalCase={() => setSeedingFindingId(f.id)}
+              evalPending={seedingFindingId === f.id}
             />
           ))
         )}
       </div>
+
+      {seedingFindingId && (
+        <EvalCaseDialog
+          findingId={seedingFindingId}
+          onClose={() => setSeedingFindingId(null)}
+        />
+      )}
     </div>
   );
 }

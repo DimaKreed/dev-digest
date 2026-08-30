@@ -1,5 +1,6 @@
-/* AgentEditor — agent config + the skills attached to it. Later lessons add
-   Evals/Stats/CI tabs. Tab state lives in ?tab=, owned by the route page. */
+/* AgentEditor — agent config, the skills attached to it, and its eval set.
+   Later lessons add the Stats/CI tabs. Tab state lives in ?tab=, owned by the
+   route page. */
 "use client";
 
 import React from "react";
@@ -9,6 +10,7 @@ import type { Agent } from "@devdigest/shared";
 import { ConfigTab } from "./_components/ConfigTab";
 import { SkillsTab } from "./_components/SkillsTab";
 import { ContextTab } from "./_components/ContextTab";
+import { EvalsTab } from "./_components/EvalsTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
@@ -23,7 +25,8 @@ export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; 
       <div style={s.body}>
         {tab === "skills" && <SkillsTab agent={agent} />}
         {tab === "context" && <ContextTab agent={agent} />}
-        {tab !== "skills" && tab !== "context" && <ConfigTab agent={agent} />}
+        {tab === "evals" && <EvalsTab agent={agent} />}
+        {tab !== "skills" && tab !== "context" && tab !== "evals" && <ConfigTab agent={agent} />}
       </div>
     </div>
   );

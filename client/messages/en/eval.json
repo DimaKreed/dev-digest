@@ -28,7 +28,62 @@
       "cost": "Cost"
     },
     "pass": "pass",
-    "fail": "fail"
+    "fail": "fail",
+    "subtitle": "Regression harness across all reviewer agents · pick an agent to see its runs",
+    "agentsHeading": "AGENTS",
+    "recentRunsAll": "RECENT EVAL RUNS · ALL AGENTS",
+    "runAll": "Run all agents",
+    "loadError": "Could not load the eval dashboard.",
+    "emptyTitle": "No agents yet",
+    "emptyBody": "An eval set belongs to an agent. Create an agent first, then turn a finding into an eval case.",
+    "neverRun": "never run",
+    "noCases": "no eval cases",
+    "lastRun": "Last run v{version} · {when} · {passed}/{total} pass",
+    "lastRunNoVersion": "Last run {when} · {passed}/{total} pass",
+    "casesOnly": "{count, plural, one {# eval case} other {# eval cases}} · never run",
+    "agentColumn": "Agent",
+    "versionColumn": "Version"
+  },
+  "agentPage": {
+    "allAgents": "All agents",
+    "subtitle": "Regression harness · {runs, plural, one {# run} other {# runs}} on the {cases}-case gold set",
+    "runEval": "Run eval",
+    "running": "Running…",
+    "recentRuns": "RECENT RUNS",
+    "selected": "{count} selected",
+    "compare": "Compare",
+    "compareHint": "Select exactly two runs to compare them.",
+    "loadError": "Could not load this agent's eval history.",
+    "noRuns": "No runs yet. Run the set to get a first measurement.",
+    "noCases": "This agent has no eval cases yet. Turn a finding into one from a pull request, or add one on the agent's Evals tab.",
+    "openCases": "Manage eval cases →",
+    "table": {
+      "ranAt": "Ran at",
+      "version": "Version",
+      "recall": "Recall",
+      "precision": "Precision",
+      "citation": "Citation",
+      "pass": "Pass",
+      "cost": "Cost"
+    },
+    "errorsNote": "{count, plural, one {# case failed to run} other {# cases failed to run}} and is excluded from every metric."
+  },
+  "compare": {
+    "title": "Compare runs · {from} → {to}",
+    "subtitle": "Old prompt vs new — metric deltas and prompt diff on the same fixed input set",
+    "metrics": {
+      "recall": "RECALL",
+      "precision": "PRECISION",
+      "citation": "CITATION",
+      "cost": "COST"
+    },
+    "promptDiff": "SYSTEM PROMPT DIFF",
+    "old": "{version} (old)",
+    "new": "{version} (new)",
+    "identicalPrompt": "Both runs used the same system prompt — the model or its sampling moved these numbers, not the prompt.",
+    "close": "Close",
+    "points": "{value}pt",
+    "pointsPlural": "{value}pts"
   },
   "caseEditor": {
     "newCase": "New eval case",
@@ -42,7 +97,8 @@
     "inputLabel": "Input",
     "tabs": {
       "diff": "Diff",
-      "prMeta": "PR meta"
+      "prMeta": "PR meta",
+      "files": "Files"
     },
     "diffPlaceholder": "--- a/src/config.ts\n+++ b/src/config.ts\n@@ -10,6 +10,7 @@\n+  stripeKey: \"sk_live_...\"",
     "titleLabel": "Title",
@@ -55,7 +111,35 @@
     "invalidJson": "invalid JSON",
     "lastRunPassed": "Last run passed",
     "lastRunFailed": "Last run failed",
-    "resultSummary": "recall {recall}% · precision {precision}% · citation {citation}% · {duration}s"
+    "resultSummary": "recall {recall}% · precision {precision}% · citation {citation}% · {duration}s",
+    "subtitle": "Simulate a change and assert what this agent must — or must not — report",
+    "expectationLabel": "Expectation",
+    "expectationHint": "Read off the finding's own accept/dismiss decision when the case was seeded from one.",
+    "notesLabel": "Notes",
+    "notesPlaceholder": "Why this case exists, and what a failure would mean.",
+    "expectationsLabel": "Expected locations",
+    "expectationsHint": "A finding counts as a match when the file is the same and the line ranges overlap. Severity and category are shown but never matched on.",
+    "addExpectation": "Add location",
+    "removeExpectation": "Remove",
+    "fileLabel": "File",
+    "startLineLabel": "Start line",
+    "endLineLabel": "End line",
+    "cancel": "Cancel",
+    "create": "Create case",
+    "creating": "Creating…",
+    "seededFrom": "Seeded from a finding on {file}",
+    "saveFailed": "Could not save this eval case.",
+    "seededSubtitle": "Seeded from a finding · run it before you keep it",
+    "positiveCase": "POSITIVE CASE",
+    "negativeCase": "NEGATIVE CASE",
+    "somethingHere": "this issue",
+    "noAssertionYet": "No location asserted yet — add one on the right.",
+    "runOnSave": "Run on save",
+    "dryRun": "dry run · not saved",
+    "findingSkeleton": "Finding skeleton",
+    "noFiles": "The diff names no files yet.",
+    "loadingDraft": "Preparing the case from this finding…",
+    "draftFailed": "This finding cannot become an eval case"
   },
   "evalsTab": {
     "metricsTitle": "Eval metrics",
@@ -71,7 +155,26 @@
     "run": "Run",
     "running": "Running…",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "runAll": "Run all evals",
+    "runningAll": "Running the set…",
+    "runningProgress": "Running {done} / {total}…",
+    "passingCount": "{passed} / {total} passing",
+    "viewDashboard": "View full dashboard →",
+    "tracesPassed": "TRACES PASSED",
+    "noMetrics": "Never run — run the set to get a first measurement.",
+    "deleteConfirm": "Delete the eval case \"{name}\"? Its run history goes with it.",
+    "runFailed": "The run could not be completed.",
+    "errored": "errored",
+    "expected": "expected {count, plural, one {# location} other {# locations}}, got {found}"
+  },
+  "expectation": {
+    "must_find": "must find",
+    "must_not_flag": "must not flag",
+    "mustFindLong": "MUST find \"{title}\" at {file}:{line}",
+    "mustNotFlagLong": "MUST NOT comment on {file}:{line}",
+    "mustFindHint": "Seeded from an accepted finding — the agent is expected to report this.",
+    "mustNotFlagHint": "Seeded from a dismissed finding — a finding here counts as noise and lowers precision."
   },
   "page": {
     "crumbSkillsLab": "Skills Lab",
@@ -80,5 +183,14 @@
     "crumbEvals": "Evals",
     "crumbNewCase": "New case",
     "crumbEvalCase": "Eval case"
+  },
+  "compareCase": {
+    "actualOutput": "Actual output",
+    "neverRun": "Never run yet — run the case to see what the agent actually reports.",
+    "noFindings": "The agent reported nothing on this diff.",
+    "noExpectations": "This case asserts no location yet.",
+    "ranAt": "ran {when}",
+    "foundOf": "found {found} of {total} expected",
+    "violations": "{count, plural, =0 {no forbidden location was flagged} one {# finding at a forbidden location} other {# findings at forbidden locations}}"
   }
 }

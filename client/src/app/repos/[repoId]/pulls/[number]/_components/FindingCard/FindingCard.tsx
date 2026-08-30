@@ -22,6 +22,8 @@ export function FindingCard({
   headSha,
   onOpenFile,
   scrollTo,
+  onTurnIntoEvalCase,
+  evalPending,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -35,6 +37,13 @@ export function FindingCard({
   /** Set (to a nonce) when this card is the `?finding=` deep-link target —
    *  expands and scrolls itself into view. */
   scrollTo?: number;
+  /**
+   * Freeze this finding into an eval case (SPEC-04). OPTIONAL, and the button
+   * is not rendered without it: the card is also mounted in contexts that have
+   * no agent to own a case, and an action that 422s is worse than no action.
+   */
+  onTurnIntoEvalCase?: () => void;
+  evalPending?: boolean;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
@@ -97,6 +106,17 @@ export function FindingCard({
             >
               {t("finding.dismiss")}
             </Button>
+            {onTurnIntoEvalCase && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon="FlaskConical"
+                disabled={evalPending}
+                onClick={onTurnIntoEvalCase}
+              >
+                {evalPending ? t("finding.evalCaseCreating") : t("finding.turnIntoEvalCase")}
+              </Button>
+            )}
           </div>
         </div>
       )}
