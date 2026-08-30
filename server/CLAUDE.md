@@ -89,6 +89,11 @@ even if `package.json` drifts locally.
   blocking POST (the shared `JobRunner`'s 120 s / `retries: 2` would break "exactly one model
   call"), why the precondition reads the edge counter and never `repo_index_state.status`, and
   why the four new tour fields are `.nullish()` inside the existing jsonb
+- [docs/eval-pipeline.md](docs/eval-pipeline.md) — why the eval scorer makes no LLM call and
+  `verify:l06` proves it statically, why "precision" here counts only findings at a
+  `must_not_flag` location, why one run of the set is rows sharing a `batch_id` with the metrics
+  recomputed on read, why every row snapshots the prompt/model/version that produced it, and the
+  step-by-step runbook for the prompt-ablation experiment (PR #485 + the seeded control agent)
 - [docs/pr-brief-card.md](docs/pr-brief-card.md) — why the brief's cost lives in the stored
   document and never in `agent_runs.cost_usd`, why `modules/brief/` reaches blast radius
   through its own two-method `BriefIntelReads` port instead of `modules/blast/service.ts`, and

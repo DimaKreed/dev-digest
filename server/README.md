@@ -73,6 +73,7 @@ flowchart TB
   end
   subgraph Agents["Agents"]
     agents["agents<br/>/agents · /agents/:id"]
+    evals["eval<br/>/agents/:id/eval-cases · /eval-cases/:id(/run)<br/>/findings/:id/eval-case · /agents/:id/eval-runs<br/>/agents/:id/eval-dashboard · /eval/dashboard · /eval/batches/:id"]
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]

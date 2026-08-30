@@ -46,7 +46,8 @@ pnpm build
 - `noUncheckedIndexedAccess: true` — `arr[0]` is `T | undefined`, so index access needs
   a guard or `!`.
 - Namespaces in `messages/en/` with no UI yet (blast, brief, conformance, conventions,
-  eval, memory, skills, compose) are intentional course scaffolding — not dead code.
+  memory, skills, compose) are intentional course scaffolding — not dead code. `eval` is no
+  longer one of them: L06 built the Evals tab and the Eval Dashboard on it.
 - vitest doesn't read tsconfig paths: new aliases must be added to
   [vitest.config.ts](vitest.config.ts) as well.
 
@@ -65,6 +66,11 @@ pnpm build
   tour's section titles come from the `onboarding` namespace and the model-supplied `title` is
   ignored, why an unrecognised `kind` is dropped in `helpers.ts` rather than rendered, and why
   every file link is a blob URL at the tour's stored sha rather than at current head
+- [../server/docs/eval-pipeline.md](../server/docs/eval-pipeline.md) — why "Turn into eval
+  case" sends no polarity (the server reads it off the finding's own accept/dismiss stamps), why
+  the Evals tab and the Eval Dashboard split curating the set from reading the movement, why a
+  never-run agent renders with no metrics rather than zeros, and why the expected-vs-actual panel
+  renders `missed`/`violations` from the server instead of matching locations in the browser
 - [../server/docs/pr-brief-card.md](../server/docs/pr-brief-card.md) — why `PrBriefCard` shows
   the brief's own `risk_level` and no verdict, why the risks render there rather than in
   `IntentCard` (which this feature leaves untouched), and why a review-focus entry with no line

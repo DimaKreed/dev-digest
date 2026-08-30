@@ -32,6 +32,11 @@ an invented entry is worse than an empty file.
 `--no-seed`, `--no-client`). Node ≥ 22. The app boots with **zero API keys**.
 Per-package commands live in each module's CLAUDE.md.
 
+`cd server && pnpm verify:l06` — the acceptance gate for SPEC-04 (the eval pipeline). It runs
+[scripts/verify-l06.mjs](scripts/verify-l06.mjs), which checks the wiring and the
+no-model-in-scoring rule statically, then runs both packages' typecheck, `pnpm arch`, the eval
+unit tests and the client suite. It needs no Docker and no API key.
+
 ## Cross-module wiring
 
 - `server` imports `reviewer-core` as **TypeScript source** via tsconfig path alias
@@ -100,6 +105,9 @@ memory, skills, compose) are **intentional scaffolding, not dead code**. Never c
   Generator: five fixed sections per repo from deterministic repo-intel facts plus one structured
   model call, with link verification and an honest banner when the index, the key or the commit
   does not match
+- [specs/04-eval-pipeline.md](specs/04-eval-pipeline.md) — SPEC-04, Eval Pipeline: eval cases
+  seeded from real accept/dismiss decisions, one run of the fixed set per `batch_id`, and
+  recall / precision / citation accuracy scored in code with no model in the loop
 - [specs/03-pr-brief-card.md](specs/03-pr-brief-card.md) — SPEC-03, PR Brief: one structured model
   call per PR state over intent, blast, diff stats, the linked issue and attached specs, cached on
   head sha plus model, rendered on the Overview tab with grounded risks and a clickable review

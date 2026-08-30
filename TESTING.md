@@ -44,6 +44,12 @@ repo-intel ranking & indexing, pricing, route smoke. The `typecheck` job also
 runs on Windows, which doubles as the `@ast-grep/napi` prebuilt gate (install
 fails there if the win32 prebuilt is missing).
 
+One more unit file is worth naming, because what it proves is structural rather
+than behavioural: `eval-scoring.test.ts` covers a module that imports nothing but
+the shared contracts, and `server/package.json`'s `verify:l06` asserts that
+import list statically. A test can only show that no model was called on the
+paths it took; the gate shows the scorer cannot call one at all.
+
 **server-integration** — the `*.it.test.ts` files. Each starts a real Postgres
 (pgvector) via testcontainers, builds the Fastify app, migrates + seeds, and
 drives routes end-to-end: reviews + run lifecycle (incl. grounding), agents CRUD,
@@ -60,6 +66,11 @@ keeping green rather than rewriting:
   across the request to prove nothing was re-indexed; and installs a counting
   `MockLLMProvider` to prove the map path reaches no model. That last one matters
   because the module *does* have an LLM path (history notes) one import away.
+- `eval.it.test.ts` proves the two eval tables round-trip through the migration
+  that added their columns, that one run of the set writes N rows sharing one
+  `batch_id`, and that seeding a case from a finding whose file has no stored
+  patch is a 422 that writes nothing. The row count and the grouping are the
+  parts no hermetic fake can prove, because both live in SQL.
 - `diff-review.it.test.ts` proves `POST /reviews/diff` resolves a real seeded
   agent and persists nothing — the route has no pull request to attach a review
   to, so a row written there would be unreachable.

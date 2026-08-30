@@ -12,6 +12,7 @@
     "test": "vitest run",
     "arch": "depcruise src --config .dependency-cruiser.cjs --ignore-known",
     "arch:all": "depcruise src --config .dependency-cruiser.cjs",
+    "verify:l06": "node ../scripts/verify-l06.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts"

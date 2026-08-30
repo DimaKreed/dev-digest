@@ -240,6 +240,61 @@ Generalisation worth carrying: a union member that no code path constructs is no
 it is a comment, and `tsc` will never tell you which is which.
 _2026-08-27_
 
+### `seed.ts`'s insert-if-absent guards mean a field ADDED to a seeded row never reaches an existing dev database
+**Symptom:** PR #482's `pr_files` gained real `patch` values so a finding could be frozen into an
+eval case. On a fresh database that worked; on the dev database that already had #482 it did
+nothing, because the whole block is inside `if (!pr) { … }` (`src/db/seed.ts:108`) and the same
+shape guards agents, skills and the control-experiment PRs. The feature then failed with "no
+stored patch" on exactly the data the demo is built around.
+**Rule:** a seed change that ENRICHES an existing row has to go in a pass placed *after* the
+guard, written to be idempotent on its own terms (`if (row.x) continue;` per row) — not inside the
+creation branch. The eval block at the end of `seed()` is the worked example: it back-fills the
+review's `agent_id` and the findings' accept/dismiss stamps, then inserts cases keyed on
+`(owner, name)`. Judge every seed edit by "what does this do to a database that already ran the
+old seed", because that is the only database a person actually has.
+_2026-08-29_
+
+### A seeded PR patch's `@@` lengths are unchecked by this repo's parser, and three of the four shipped fixtures disagreed with their own bodies
+**Symptom:** adding PR #485 to `CONTROL_EXPERIMENT_PULLS` and asserting the fixtures against
+`parseUnifiedDiff` failed on code nobody had touched: `#483 src/lib/discount.test.ts` declared
+`@@ -0,0 +1,9 @@` over 8 added lines, and both of #484's files were off by two. Nothing had ever
+surfaced it, because `parseUnifiedDiff` (`src/adapters/git/diff-parser.ts:47-58`) seeds its cursor
+from `newStart` and counts the body itself — the declared lengths are stored on the hunk and never
+read again.
+**Rule:** when hand-authoring a seed patch, treat the lengths as documentation that must still be
+true: `git apply` and every non-toy parser reject a mismatch, and the `additions`/`deletions` next
+to them go onto the `pull_requests` row and into the UI. `newStart` is the field that actually
+matters — get it wrong and every finding on that file is cited at a line the grounding gate then
+drops. `test/seed-pulls.test.ts` now pins header-vs-body, counters-vs-body, one-file-per-patch,
+and "no `diff --git` inside the patch" for every fixture.
+_2026-08-30_
+
+### `enabled: false` on an agent blocks "Run all" but NOT an explicit run — which is what makes a seeded experiment fixture safe
+**Symptom:** seeding a fifth agent ("Security Reviewer (control)") looked like a choice between
+polluting every "Run all" with an extra billed agent, or seeding it disabled and hoping it could
+still be run at all.
+**Rule:** `ReviewService.resolveTargets` (`src/modules/reviews/service.ts:65-75`) checks the flag
+on ONE branch only — `all: true` resolves through `agents.listEnabled`, while `agentId` goes
+through `getById` with no flag check. The eval pipeline's `requireAgent` likewise only checks
+existence. So a disabled agent is invisible to fan-out and to the dashboard's enabled list, yet
+still appears in the Run Review dropdown (which lists agents regardless of the flag) and still
+runs its eval set. That combination is the right shape for any fixture agent you want available
+but never automatic.
+_2026-08-30_
+
+### A skill survives blanking the system prompt, so a prompt-ablation experiment on an agent with skills measures the wrong thing
+**Symptom:** the obvious way to test "does the system prompt matter" is to clear the prompt on the
+built-in Security Reviewer and re-run. That agent has `secret-leakage-gate` and `lethal-trifecta`
+linked (`src/db/seed-skills.ts:186-188`), and both keep instructing the model after the prompt is
+gone.
+**Rule:** skills are resolved independently of `systemPrompt` and rendered as their own
+`## Skills / rules` section in the USER message (`run-executor.ts` → `reviewer-core/src/prompt.ts`),
+so nothing about clearing the system prompt removes them. An ablation agent must have zero skills
+attached, or the arm you think is "no guidance" still carries the guidance that matters most.
+The seeded `Security Reviewer (control)` is deliberately absent from `SEED_AGENT_SKILLS` for
+this reason.
+_2026-08-30_
+
 ## Tool & Library Notes
 
 ### A model schema handed to `completeStructured` may not carry `.default()` or `.transform()` — its Zod input and output types must be identical
@@ -326,6 +381,20 @@ and the suite will still pass; the mismatch surfaces later as a runtime surprise
 change. Either widen the mock deliberately as its own change, or route around it and say so.
 Do not read a passing typecheck as coverage of `test/`.
 _2026-08-27_
+
+### Folding a late change into the migration you just generated means rolling back THREE drizzle-kit files
+**Symptom:** `pnpm db:generate` had already emitted `0017_bouncy_exodus.sql` for the new
+`eval_cases` / `eval_runs` columns. Declaring two indexes in the schema and regenerating produced
+a *second* migration holding only the `CREATE INDEX` lines — drizzle-kit diffs the schema against
+`meta/<NNNN>_snapshot.json`, never against the previous `.sql`.
+**Rule:** to fold the change into the migration you just made, delete all three of
+`src/db/migrations/<tag>.sql`, `src/db/migrations/meta/<NNNN>_snapshot.json` **and** the matching
+object in `entries[]` of `meta/_journal.json`, then regenerate. Deleting only the `.sql` is the
+trap: the snapshot still claims the columns exist, so the next generate emits *nothing* and the
+columns silently never migrate. Two migrations is the correct answer once one has been applied
+anywhere — this rollback is only for a generate that has not left the working tree.
+`server/src/db/migrations/meta/_journal.json`
+_2026-08-29_
 
 ## Recurring Errors & Fixes
 
