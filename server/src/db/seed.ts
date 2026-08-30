@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createDb, type Db } from './client.js';
 import * as t from './schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import {
   GENERAL_REVIEWER_PROMPT,
@@ -11,6 +11,35 @@ import {
 } from './seed-prompts.js';
 import { SEED_SKILLS, SEED_AGENT_SKILLS } from './seed-skills.js';
 import { CONTROL_EXPERIMENT_PULLS } from './seed-pulls.js';
+import { BUILT_EVAL_CASES } from './seed-evals.js';
+
+/**
+ * Patches for the two PR #482 files an eval case can be seeded from.
+ *
+ * The line numbers the two seeded findings cite (config.ts:12, users.ts:45-52)
+ * fall inside these hunks on purpose: a case seeded from a finding whose lines
+ * miss the hunk would be dropped by the citation-grounding gate on every run,
+ * so it could never pass however good the agent is.
+ */
+const SEED_CONFIG_PATCH = [
+  '@@ -10,4 +10,5 @@',
+  ' export const config = {',
+  '   port: Number(process.env.PORT ?? 3000),',
+  '+  stripeKey: "sk_live_51H8xq2Ka9Vn3PqLm7Rd0bZ4Xc",',
+  '   redisUrl: process.env.REDIS_URL,',
+  ' };',
+].join('\n');
+
+const SEED_USERS_PATCH = [
+  '@@ -45,4 +45,8 @@',
+  ' export async function listUsers(ids: string[]) {',
+  '   const out = [];',
+  '+  for (const id of ids) {',
+  '+    out.push(await db.user.findById(id));',
+  '+  }',
+  '   return out;',
+  ' }',
+].join('\n');
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -24,13 +53,16 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
  * with a few findings, the four built-in agents (General + Security +
  * Performance + Test Quality) on the default openrouter/deepseek-v4-flash
- * provider+model, the demo skills with their agent links, and the two
- * control-experiment PRs (#483, #484).
+ * provider+model, the disabled "Security Reviewer (control)" experiment
+ * fixture, the demo skills with their agent links, the three
+ * control-experiment PRs (#483 skills, #484 API contract, #485 prompt
+ * ablation), and the Security Reviewer's starter eval set (SPEC-04) — ten
+ * cases of both polarities.
  *
  * NOTE: this creates no `agent_runs`, so every run-derived surface (cost,
  * timeline, per-skill Stats) is legitimately empty until you trigger a review.
  *
- * Course lessons populate the remaining tables (conventions, memory, eval, …)
+ * Course lessons populate the remaining tables (conventions, memory, …)
  * once their features are built — they start empty here.
  */
 
@@ -126,11 +158,27 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .returning();
 
     // pr_files (subset)
+    // Two of these carry a real `patch`. That is what makes "Turn into eval
+    // case" work on seeded data: the seeding path freezes the stored patch into
+    // the case, and a file with no patch is rejected rather than stored as an
+    // unusable case (SPEC-04 § Edge cases).
     await db.insert(t.prFiles).values([
       { prId: pr!.id, path: 'src/middleware/ratelimit.ts', additions: 84, deletions: 0 },
       { prId: pr!.id, path: 'src/api/public/webhooks.ts', additions: 31, deletions: 6 },
-      { prId: pr!.id, path: 'src/config.ts', additions: 4, deletions: 0 },
-      { prId: pr!.id, path: 'src/api/users.ts', additions: 7, deletions: 2 },
+      {
+        prId: pr!.id,
+        path: 'src/config.ts',
+        additions: 4,
+        deletions: 0,
+        patch: SEED_CONFIG_PATCH,
+      },
+      {
+        prId: pr!.id,
+        path: 'src/api/users.ts',
+        additions: 7,
+        deletions: 2,
+        patch: SEED_USERS_PATCH,
+      },
     ]);
 
     // pr_commits
@@ -222,6 +270,24 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     },
     {
       workspaceId,
+      name: 'Security Reviewer (control)',
+      description:
+        'Experiment fixture for the prompt ablation — same prompt as Security Reviewer, no skills attached. Edit this one, not the built-in.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: SECURITY_REVIEWER_PROMPT,
+      // Seeded DISABLED, and that is load-bearing rather than tidy: `all: true`
+      // resolves through `listEnabled`, so a disabled agent never joins a "Run
+      // all" and never costs anything by accident. Running it explicitly by id
+      // does NOT check the flag (`ReviewService.resolveTargets`), so it is
+      // still one click away in the Run Review dropdown, and eval runs — which
+      // resolve the agent by id too — work unchanged.
+      enabled: false,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
       name: 'Test Quality Reviewer',
       description:
         'Checks test quality: uncovered branches, missed corner cases, over-mocking, flake risk.',
@@ -297,7 +363,8 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     }
   }
 
-  // ---- control-experiment PRs (#483 test quality, #484 API contract) ----
+  // ---- control-experiment PRs (#483 test quality, #484 API contract,
+  // #485 prompt ablation) ----
   // These carry real patches so a review can run with no clone and no token.
   for (const p of CONTROL_EXPERIMENT_PULLS) {
     const [existing] = await db
@@ -338,6 +405,93 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       message: p.commitMessage,
       author: p.author,
     });
+  }
+
+  // ---- SPEC-04: the eval pipeline's starter state -------------------------
+  // Runs AFTER the agents exist, because both halves need the Security
+  // Reviewer's id: the seeded review is attributed to it (so its findings have
+  // an owning agent and can be turned into eval cases at all — AC-03), and the
+  // starter case set is owned by it.
+  const [security] = await db
+    .select()
+    .from(t.agents)
+    .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'Security Reviewer')));
+
+  if (security) {
+    // Back-fill the two patches an eval case is frozen from.
+    //
+    // They are ALSO written in the PR-creation branch above, and that branch is
+    // guarded by `if (!pr)`, so on any database that already ran an older seed
+    // the columns are still null — and "Turn into eval case" then fails with
+    // "no stored patch" on exactly the finding the demo is built around. A seed
+    // change that enriches an existing row has to run outside the creation
+    // guard, keyed per row so re-running it overwrites nothing.
+    const patches: Record<string, string> = {
+      'src/config.ts': SEED_CONFIG_PATCH,
+      'src/api/users.ts': SEED_USERS_PATCH,
+    };
+    for (const [path, patch] of Object.entries(patches)) {
+      await db
+        .update(t.prFiles)
+        .set({ patch })
+        .where(and(eq(t.prFiles.path, path), isNull(t.prFiles.patch)));
+    }
+
+    // Attribute the seeded review, and LABEL its two findings — one accepted,
+    // one dismissed. Those labels are the dataset: a fresh checkout otherwise
+    // has no accept/dismiss history, and the one-click seeding path has nothing
+    // to demonstrate either polarity with.
+    const seededReviews = await db
+      .select()
+      .from(t.reviews)
+      .where(and(eq(t.reviews.workspaceId, workspaceId), eq(t.reviews.model, 'seed')));
+    for (const review of seededReviews) {
+      if (!review.agentId) {
+        await db
+          .update(t.reviews)
+          .set({ agentId: security.id })
+          .where(eq(t.reviews.id, review.id));
+      }
+      const rows = await db.select().from(t.findings).where(eq(t.findings.reviewId, review.id));
+      for (const f of rows) {
+        if (f.acceptedAt || f.dismissedAt) continue;
+        // The Stripe key is a real leak (accepted → must_find); the N+1 is a
+        // known, tracked trade-off in this demo (dismissed → must_not_flag).
+        const accepted = f.category === 'security';
+        await db
+          .update(t.findings)
+          .set(accepted ? { acceptedAt: new Date() } : { dismissedAt: new Date() })
+          .where(eq(t.findings.id, f.id));
+      }
+    }
+
+    // The starter eval set. Idempotent by (owner, name), like the agents and
+    // skills above: re-seeding never overwrites a case the user has since
+    // edited, and never duplicates one.
+    for (const c of BUILT_EVAL_CASES) {
+      const [existing] = await db
+        .select()
+        .from(t.evalCases)
+        .where(
+          and(
+            eq(t.evalCases.workspaceId, workspaceId),
+            eq(t.evalCases.ownerId, security.id),
+            eq(t.evalCases.name, c.name),
+          ),
+        );
+      if (existing) continue;
+      await db.insert(t.evalCases).values({
+        workspaceId,
+        ownerKind: 'agent',
+        ownerId: security.id,
+        name: c.name,
+        expectationKind: c.expectationKind,
+        inputDiff: c.inputDiff,
+        inputMeta: { title: c.name },
+        expectedOutput: [c.expectation],
+        notes: c.notes,
+      });
+    }
   }
 
   return { workspaceId, userId };

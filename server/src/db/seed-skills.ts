@@ -181,7 +181,16 @@ Never write "add more tests" or "coverage is low". Name the case.`,
   },
 ];
 
-/** Skills linked to each seeded agent, in prompt order. */
+/**
+ * Skills linked to each seeded agent, in prompt order.
+ *
+ * "Security Reviewer (control)" is deliberately ABSENT. Skills are rendered
+ * into the prompt as their own section, independent of `systemPrompt`
+ * (`reviewer-core/src/prompt.ts`), so a skill survives blanking the system
+ * prompt — `secret-leakage-gate` would keep telling the ablated agent to hunt
+ * for secrets and quietly hold recall up. The control agent has to carry
+ * exactly one variable, so it carries none.
+ */
 export const SEED_AGENT_SKILLS: Record<string, string[]> = {
   'Test Quality Reviewer': ['test-coverage-nudge', 'pr-quality-rubric'],
   'Security Reviewer': ['secret-leakage-gate', 'lethal-trifecta'],
