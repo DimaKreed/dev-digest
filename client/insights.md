@@ -261,6 +261,15 @@ bars above an empty number column; switching to the `Donut` the design showed re
 `BarRow` instead of fighting it.
 _2026-08-03_
 
+**Same shape, two more members, found while building the eval editor:** `Textarea` accepts only
+`value / onChange / placeholder / rows / mono` — there is no `style` and no `className`, so sizing a
+diff editor is `rows={14} mono`, not a style object (`src/vendor/ui/kit/Textarea.tsx:5`). `IconBtn`
+has no `disabled` either; a busy state is `active={busy}` plus an `onClick` of `undefined`
+(`src/vendor/ui/primitives/IconBtn.tsx:4`). Both are caught by `pnpm typecheck` rather than at
+runtime, but only after the component is written — read the primitive's props before reaching for an
+HTML-ish one.
+_2026-08-29_
+
 ## Recurring Errors & Fixes
 
 ### `TS2307: Cannot find module '../../../../../../messages/en/prReview.json'` in a new component test
@@ -275,6 +284,19 @@ Existing depths: `src/components/*` ⇒ 3 `..`,
 `src/app/repos/[repoId]/pulls/[number]/_components/*` ⇒ 8 `..`. If this recurs, the fix is an
 alias in **both** `tsconfig.json` and `vitest.config.ts` (the latter doesn't read tsconfig paths).
 _2026-07-30_
+
+### `Error: useToast must be used within <ToastProvider>` in a test that never mentioned toasts
+**Symptom:** adding a mutation with a success/error toast to `FindingsPanel` broke all four of its
+existing render tests. The failure names `src/lib/toast.tsx:26` and the component's own line, so it
+reads like a bug in the new code rather than a missing wrapper in a file that was not touched.
+**Rule:** `useToast` throws rather than degrading, so the provider is part of a component's render
+contract the moment the hook is added. Wrap the test's render helper —
+`<NextIntlClientProvider …><ToastProvider>{ui}</ToastProvider></NextIntlClientProvider>` — and
+`vi.mock` the new data hook alongside the ones already mocked there. Check the component's
+`*.test.tsx` in the same edit as the hook; nothing else will remind you, and the same trap applies
+to `useRepo` and to any query hook (no `QueryClientProvider` in these tests either).
+`src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.test.tsx:62`
+_2026-08-29_
 
 ## Session Notes
 

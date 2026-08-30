@@ -8,6 +8,26 @@
  * editing a prompt here only affects freshly seeded workspaces.
  */
 
+/**
+ * The ablated prompt — the "no guidance" arm of the prompt control experiment
+ * (runbook in `server/docs/eval-pipeline.md`).
+ *
+ * Not an empty string, for two reasons. `PUT /agents/:id` requires
+ * `system_prompt` to be non-empty (`modules/agents/routes.ts`), and that guard
+ * is worth keeping: clearing a prompt by accident should not be one keystroke.
+ * And an empty system message is not actually the interesting control — the
+ * engine still appends `INJECTION_GUARD`, still sends the task line and the
+ * diff, and still enforces the output schema at the provider, so "empty" and
+ * "one bland sentence" reach the model as nearly the same thing.
+ *
+ * What this text removes is everything that makes the reviewer a REVIEWER: the
+ * role, the OWASP scope, the three severity definitions, the "precision over
+ * volume / no style nits" rule, the conservative lethal-trifecta test, and the
+ * requirement to cite a line that exists in the diff. That is the variable the
+ * experiment isolates.
+ */
+export const MINIMAL_REVIEWER_PROMPT = 'Review the diff.';
+
 export const GENERAL_REVIEWER_PROMPT = `# Role
 You are a pragmatic senior engineer reviewing a pull-request diff for a Node.js
 (TypeScript, ESM) service. You receive the full PR diff in one pass. Find defects

@@ -1,11 +1,20 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
+import { ToastProvider } from "../../../../../../../lib/toast";
 import type { FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
+import evalMessages from "../../../../../../../../messages/en/eval.json";
 
 vi.mock("../../../../../../../lib/hooks/reviews", () => ({
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+// The panel opens the eval-case editor over a DRAFT it fetches (SPEC-04);
+// mocked here for the same reason the action hook is — this file is a render
+// smoke test with no query client and no API.
+vi.mock("../../../../../../../lib/hooks/eval", () => ({
+  useEvalCaseDraft: () => ({ data: undefined, isLoading: true, isError: false }),
 }));
 
 import { FindingsPanel } from "./FindingsPanel";
@@ -53,8 +62,10 @@ const FINDINGS: FindingRecord[] = [
 
 function renderWithIntl(ui: React.ReactElement) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      {ui}
+    <NextIntlClientProvider locale="en" messages={{ prReview: messages, eval: evalMessages }}>
+      {/* The eval-case editor the panel can open raises toasts, so the provider
+          is part of this panel's render contract now. */}
+      <ToastProvider>{ui}</ToastProvider>
     </NextIntlClientProvider>,
   );
 }

@@ -170,6 +170,19 @@ client side does not have this hole: `ui-tests` covers `client/src/**/*.test.tsx
 router row, check the test paths of every package, not just its source paths.
 _2026-08-28_
 
+### In `vendor/shared/contracts/*.ts`, "extend, never edit" still means a new schema referenced by an existing one goes ABOVE it
+**Symptom:** `contracts/eval-ci.ts` says feature work EXTENDS the file, so a block of new Zod
+schemas was appended at the bottom and `EvalCaseInput` — near the top — was given a field using one
+of them. `tsc` failed with `TS2448: Block-scoped variable 'EvalExpectationKind' used before its
+declaration`, twice per copy.
+**Rule:** a Zod schema is a `const`, not a type, so it does not hoist: only a **leaf** addition is
+safe at the bottom. Anything an existing schema references has to be defined above its first use,
+which for these files means splitting the new block — the enums and the small object schemas move
+up next to the schema that consumes them, the rest stays appended. Both `vendor/shared` copies need
+the identical move, and the error surfaces only in `pnpm typecheck`, never at author time.
+`server/src/vendor/shared/contracts/eval-ci.ts:19`
+_2026-08-29_
+
 ## Tool & Library Notes
 
 ### `tsconfig.json`'s `include` differs per package, so `pnpm typecheck` proves nothing about tests in `server/` or `reviewer-core/`
