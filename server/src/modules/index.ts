@@ -15,6 +15,7 @@ import blast from './blast/routes.js';
 import diffReview from './diff-review/routes.js';
 import onboarding from './onboarding/routes.js';
 import brief from './brief/routes.js';
+import evals from './eval/routes.js';
 
 /**
  * Module registry. Each feature module is a Fastify plugin in
@@ -46,4 +47,7 @@ export const modules: Record<string, FastifyPluginAsync> = {
   diffReview,
   onboarding,
   brief,
+  // Registered as `evals`: `eval` is a reserved word, so the identifier cannot
+  // be the module name here even though the routes and the folder are `eval`.
+  evals,
 };
